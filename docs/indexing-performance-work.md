@@ -116,3 +116,45 @@ runtime experiments. Reduced precision requires retrieval-quality measurements.
 `CODEGRAPH_PARSER_TIMEOUT_SECS` sets the small-file timeout (default 10 seconds),
 scaled by three/six for medium/large files. AST extraction after parsing remains
 bounded by worker permits even if its timeout expires.
+
+8. Provider-aware token counting (OpenAI BPE or loaded local tokenizer), final input
+   budget enforcement even when semantic splitting is disabled, file-grouped source
+   reuse and an opt-in `CODEGRAPH_CHUNK_SPLITTER=text-splitter` comparison path.
+   `CODEGRAPH_SCIP_INDEX=/path/index.scip` substitutes an existing compiler index for
+   LSP analysis. Two streaming passes preserve local/global identities and reject
+   ambiguous definitions, invalid positions and stale source. Balanced enriches existing
+   links; Full also adds compiler references. SCIP documents with embedded text need no
+   sidecar; otherwise generate `index.sources.json` with
+   `scripts/benchmarks/scip-source-manifest.py` alongside fresh compiler output.
+   `CODEGRAPH_SCIP_TRUST_SOURCE=1` explicitly accepts unverified source identity.
+   Token-budget and compiler-link/stale-source regressions run without external services.
+
+9. Independent `CODEGRAPH_EMBEDDING_POLICY` and `CODEGRAPH_SEMANTIC_RESOLUTION`
+   accept `sync|deferred|off`. Defaults preserve enabled-feature behavior. Deferred
+   runs persist a resumable job, mark the graph ready and inference pending, and avoid
+   provider startup when neither stage is synchronous. Resume with
+   `codegraph index <root> --complete-deferred`; current sources are reconciled again
+   and only pending stages become synchronous. Failed runs retain their job.
+   `--stats-json <path>` writes structured metrics and explicit stage status.
+
+10. `CODEGRAPH_VECTOR_INDEX_MODE=all|selected|deferred|off` controls fresh-store HNSW
+    construction. The default retains all dimensions; selected builds the active
+    dimension before ingestion; deferred builds it after durable writes. Off reports
+    vector readiness false. Shared existing indexes are never dropped. M/EFC tuning
+    uses `CODEGRAPH_HNSW_M`/`CODEGRAPH_HNSW_EFC` for newly created indexes only.
+    Completion verifies `ready` and no pending vector compaction through
+    [SurrealDB index information](https://surrealdb.com/docs/reference/query-language/statements/info).
+    Final source/support validation rejects edits during indexing. External Cargo
+    manifests, tokenizer contents, chunk policy and analyzer settings invalidate
+    project readiness; mutable model aliases periodically refresh it. Warm LSP
+    sessions restart when build inputs change. In-memory embedding cache hits avoid
+    redundant persistent cache reads.
+
+11. Structured stats separate provider/database startup from indexing, report phase
+    wall times (overlapped phases are not additive), real source-capture reads/bytes,
+    spilled bytes, inference texts/tokens, cache hits and acknowledged writer
+    jobs/rows/serialized payload bytes. Writer metrics cover queued ingestion jobs
+    before the final completion marker, not every database RPC. No-change runs reset
+    work counters instead of repeating previous inference totals. CLI wall timing now
+    includes startup. Explicit Send future boundaries keep feature-enabled daemon
+    integration compiling without materializing all inference batches.

@@ -48,6 +48,7 @@ pub fn analyze_cargo_workspace(
             .iter()
             .all(|(path, hash)| file_hash(Path::new(path)).as_ref() == Some(hash))
         {
+            cache.put("external-inputs", &artifact.external)?;
             return parse_cargo_metadata_json(&artifact.json, project_id);
         }
     }
@@ -64,7 +65,7 @@ pub fn analyze_cargo_workspace(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let root: JsonValue = serde_json::from_str(&stdout)?;
-    let external = root["packages"]
+    let external: std::collections::BTreeMap<String, String> = root["packages"]
         .as_array()
         .into_iter()
         .flatten()
@@ -72,6 +73,7 @@ pub fn analyze_cargo_workspace(
         .filter(|path| !Path::new(path).starts_with(project_root))
         .filter_map(|path| file_hash(Path::new(path)).map(|hash| (path.to_owned(), hash)))
         .collect();
+    cache.put("external-inputs", &external)?;
     if let Err(error) = cache.put(
         &key,
         &MetadataArtifact {
@@ -90,7 +92,27 @@ struct MetadataArtifact {
     external: std::collections::BTreeMap<String, String>,
 }
 fn file_hash(path: &Path) -> Option<String> {
-    codegraph_core::artifact_cache::fingerprint(&std::fs::read(path).ok()?).ok()
+    crate::reconciliation::file_fingerprint(path).ok()
+}
+
+pub(crate) fn external_input_fingerprints(
+    root: &Path,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let cache = codegraph_core::artifact_cache::ArtifactCache::new(
+        root.join(".codegraph/index-cache"),
+        "cargo-metadata-v1",
+    );
+    let previous: std::collections::BTreeMap<String, String> =
+        cache.get("external-inputs").unwrap_or_default();
+    previous
+        .keys()
+        .map(|path| {
+            Ok((
+                path.clone(),
+                crate::reconciliation::file_fingerprint(Path::new(path))?,
+            ))
+        })
+        .collect()
 }
 
 pub fn parse_cargo_metadata_json(json: &str, project_id: &str) -> Result<BuildContextOutput> {

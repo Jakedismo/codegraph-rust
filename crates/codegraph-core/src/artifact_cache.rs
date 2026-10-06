@@ -95,6 +95,14 @@ impl ArtifactCache {
         Ok(result?)
     }
 
+    pub fn remove(&self, key: &str) -> std::io::Result<()> {
+        match std::fs::remove_file(self.path(key)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Evict oldest artifacts at a run boundary, avoiding directory scans per write.
     pub fn prune(&self, maximum_bytes: u64) -> std::io::Result<()> {
         let entries = match std::fs::read_dir(&self.root) {

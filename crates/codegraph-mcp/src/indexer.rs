@@ -136,6 +136,8 @@ fn extract_count(values: Vec<JsonValue>) -> Result<i64> {
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct IndexerConfig {
+    #[serde(default)]
+    pub complete_deferred: bool,
     pub languages: Vec<String>,
     pub exclude_patterns: Vec<String>,
     pub include_patterns: Vec<String>,
@@ -159,6 +161,7 @@ pub struct IndexerConfig {
 impl Default for IndexerConfig {
     fn default() -> Self {
         Self {
+            complete_deferred: false,
             languages: vec![],
             exclude_patterns: vec![],
             include_patterns: vec![],
@@ -234,10 +237,13 @@ pub struct ProjectIndexer {
     project_root: PathBuf,
     reconcile_lock: TokioMutex<()>,
     lsp_pool: crate::analyzers::lsp::LspPool,
+    policies: crate::policy::InferencePolicies,
+    startup_ms: u64,
+    lsp_support: TokioMutex<Option<String>>,
     #[cfg(feature = "embeddings")]
     chunk_pool: rayon::ThreadPool,
     #[cfg(feature = "embeddings")]
-    embedder: codegraph_vector::EmbeddingGenerator,
+    embedder: Option<codegraph_vector::EmbeddingGenerator>,
 }
 
 use crate::writer::SurrealWriterHandle;
@@ -306,508 +312,640 @@ impl ProjectIndexer {
         ))
     }
 
-    pub async fn new(
+    pub fn new(
         mut config: IndexerConfig,
         global_config: &codegraph_core::config_manager::CodeGraphConfig,
         multi_progress: MultiProgress,
-    ) -> Result<Self> {
-        // Cap Rayon threads to a sensible default: leave one core free and obey user overrides
-        let available = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4);
-        let env_workers = std::env::var("CODEGRAPH_WORKERS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok());
-        let requested = std::env::var("RAYON_NUM_THREADS")
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .filter(|threads| *threads > 0)
-            .or(env_workers)
-            .unwrap_or(config.workers);
-        #[cfg(feature = "embeddings")]
-        let chunk_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(requested.max(1).min(available.max(1)))
-            .build()?;
+    ) -> futures::future::BoxFuture<'_, Result<Self>> {
+        Box::pin(async move {
+            let startup = std::time::Instant::now();
+            let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
+                .unwrap_or_else(|_| config.project_root.display().to_string());
+            let policies = if config.complete_deferred {
+                crate::policy::completion_policies(&config.project_root, &project_id)?
+            } else {
+                crate::policy::InferencePolicies::from_env()?
+            };
+            // Cap Rayon threads to a sensible default: leave one core free and obey user overrides
+            let available = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4);
+            let env_workers = std::env::var("CODEGRAPH_WORKERS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok());
+            let requested = std::env::var("RAYON_NUM_THREADS")
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+                .filter(|threads| *threads > 0)
+                .or(env_workers)
+                .unwrap_or(config.workers);
+            #[cfg(feature = "embeddings")]
+            let chunk_pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(requested.max(1).min(available.max(1)))
+                .build()?;
 
-        // Allow runtime override for embedding batch size
-        if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
-            if let Ok(parsed) = val.parse::<usize>() {
-                config.batch_size = parsed.clamp(1, 2048);
+            // Allow runtime override for embedding batch size
+            if let Ok(val) = std::env::var("CODEGRAPH_EMBEDDINGS_BATCH_SIZE") {
+                if let Ok(parsed) = val.parse::<usize>() {
+                    config.batch_size = parsed.clamp(1, 2048);
+                }
             }
-        }
 
-        config.workers = requested.max(1).min(available.max(1));
-        let parser = TreeSitterParser::new()
-            .with_concurrency(config.workers)
-            .with_project_root(&config.project_root)
-            .with_extraction_policy(extraction_policy_for_tier(config.indexing_tier));
-        let project_root = config.project_root.clone();
-        let (surreal, surreal_pool) = Self::connect_surreal(&project_root).await?;
-        let surreal_writer = SurrealWriterHandle::new(surreal_pool);
-        let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
-            .unwrap_or_else(|_| project_root.display().to_string());
-        let organization_id = std::env::var("CODEGRAPH_ORGANIZATION_ID").ok();
-        let repository_url = std::env::var("CODEGRAPH_REPOSITORY_URL").ok();
-        let domain = std::env::var("CODEGRAPH_DOMAIN").ok();
-        #[cfg(feature = "embeddings")]
-        let embedder = {
-            use codegraph_vector::EmbeddingGenerator;
-            // Use global config for embedding provider
-            let provider = global_config.embedding.provider.to_lowercase();
-            if provider == "local" {
-                #[cfg(feature = "embeddings-local")]
-                {
-                    use codegraph_vector::embeddings::generator::{
-                        AdvancedEmbeddingGenerator, EmbeddingEngineConfig, LocalDeviceTypeCompat,
-                        LocalEmbeddingConfigCompat, LocalPoolingCompat,
-                    };
-                    let mut cfg = EmbeddingEngineConfig::default();
-                    cfg.prefer_local_first = true;
-                    let device = match config
-                        .device
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_lowercase()
-                        .as_str()
-                    {
-                        "metal" => LocalDeviceTypeCompat::Metal,
-                        d if d.starts_with("cuda:") => {
-                            let id = d.trim_start_matches("cuda:").parse::<usize>().unwrap_or(0);
-                            LocalDeviceTypeCompat::Cuda(id)
-                        }
-                        _ => LocalDeviceTypeCompat::Cpu,
-                    };
-                    let model_name =
-                        global_config.embedding.model.clone().unwrap_or_else(|| {
-                            "sentence-transformers/all-MiniLM-L6-v2".to_string()
-                        });
-                    cfg.local = Some(LocalEmbeddingConfigCompat {
-                        model_name,
-                        device,
-                        cache_dir: None,
-                        max_sequence_length: config.max_seq_len.max(32),
-                        pooling_strategy: LocalPoolingCompat::Mean,
-                    });
-                    // Try to construct advanced engine; fall back to simple generator on error
-                    match AdvancedEmbeddingGenerator::new(cfg).await {
-                        Ok(engine) => {
-                            if !engine.has_provider() {
-                                return Err(anyhow::anyhow!(
-                                    "Local embedding provider constructed without a backend. Ensure the model is BERT-compatible with safetensors and try --device metal or --device cpu"
-                                ));
+            config.workers = requested.max(1).min(available.max(1));
+            let parser = TreeSitterParser::new()
+                .with_concurrency(config.workers)
+                .with_project_root(&config.project_root)
+                .with_extraction_policy(extraction_policy_for_tier(config.indexing_tier));
+            let project_root = config.project_root.clone();
+            let (surreal, surreal_pool) = Self::connect_surreal(&project_root).await?;
+            let surreal_writer = SurrealWriterHandle::new(surreal_pool);
+            let project_id = std::env::var("CODEGRAPH_PROJECT_ID")
+                .unwrap_or_else(|_| project_root.display().to_string());
+            let organization_id = std::env::var("CODEGRAPH_ORGANIZATION_ID").ok();
+            let repository_url = std::env::var("CODEGRAPH_REPOSITORY_URL").ok();
+            let domain = std::env::var("CODEGRAPH_DOMAIN").ok();
+            #[cfg(feature = "embeddings")]
+            let embedder = if policies.needs_provider() {
+                let embedder = {
+                    use codegraph_vector::EmbeddingGenerator;
+                    // Use global config for embedding provider
+                    let provider = global_config.embedding.provider.to_lowercase();
+                    if provider == "local" {
+                        #[cfg(feature = "embeddings-local")]
+                        {
+                            use codegraph_vector::embeddings::generator::{
+                                AdvancedEmbeddingGenerator, EmbeddingEngineConfig,
+                                LocalDeviceTypeCompat, LocalEmbeddingConfigCompat,
+                                LocalPoolingCompat,
+                            };
+                            let mut cfg = EmbeddingEngineConfig::default();
+                            cfg.prefer_local_first = true;
+                            let device = match config
+                                .device
+                                .as_deref()
+                                .unwrap_or("")
+                                .to_lowercase()
+                                .as_str()
+                            {
+                                "metal" => LocalDeviceTypeCompat::Metal,
+                                d if d.starts_with("cuda:") => {
+                                    let id =
+                                        d.trim_start_matches("cuda:").parse::<usize>().unwrap_or(0);
+                                    LocalDeviceTypeCompat::Cuda(id)
+                                }
+                                _ => LocalDeviceTypeCompat::Cpu,
+                            };
+                            let model_name =
+                                global_config.embedding.model.clone().unwrap_or_else(|| {
+                                    "sentence-transformers/all-MiniLM-L6-v2".to_string()
+                                });
+                            cfg.local = Some(LocalEmbeddingConfigCompat {
+                                model_name,
+                                device,
+                                cache_dir: None,
+                                max_sequence_length: config.max_seq_len.max(32),
+                                pooling_strategy: LocalPoolingCompat::Mean,
+                            });
+                            // Try to construct advanced engine; fall back to simple generator on error
+                            match AdvancedEmbeddingGenerator::new(cfg).await {
+                                Ok(engine) => {
+                                    if !engine.has_provider() {
+                                        return Err(anyhow::anyhow!(
+                                            "Local embedding provider constructed without a backend. Ensure the model is BERT-compatible with safetensors and try --device metal or --device cpu"
+                                        ));
+                                    }
+                                    let mut g = EmbeddingGenerator::default();
+                                    g.set_advanced_engine(std::sync::Arc::new(engine));
+                                    tracing::info!(
+                                        target: "codegraph_mcp::indexer",
+                                        "Active embeddings: Local (device: {}, max_seq_len: {}, batch_size: {})",
+                                        config.device.as_deref().unwrap_or("cpu"),
+                                        config.max_seq_len,
+                                        config.batch_size
+                                    );
+                                    g
+                                }
+                                Err(e) => {
+                                    return Err(anyhow::anyhow!(
+                                        "Failed to initialize local embedding provider: {}",
+                                        e
+                                    ));
+                                }
                             }
-                            let mut g = EmbeddingGenerator::default();
-                            g.set_advanced_engine(std::sync::Arc::new(engine));
-                            tracing::info!(
+                        }
+                        #[cfg(not(feature = "embeddings-local"))]
+                        {
+                            tracing::warn!(
                                 target: "codegraph_mcp::indexer",
-                                "Active embeddings: Local (device: {}, max_seq_len: {}, batch_size: {})",
-                                config.device.as_deref().unwrap_or("cpu"),
-                                config.max_seq_len,
-                                config.batch_size
+                                "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
                             );
+                            let g = EmbeddingGenerator::with_auto_from_env().await;
+                            // Set batch_size and max_concurrent for Jina provider if applicable
+                            #[cfg(feature = "embeddings-jina")]
+                            {
+                                g.set_jina_batch_size(config.batch_size);
+                                g.set_jina_max_concurrent(config.max_concurrent);
+                            }
                             g
                         }
-                        Err(e) => {
-                            return Err(anyhow::anyhow!(
-                                "Failed to initialize local embedding provider: {}",
-                                e
-                            ));
+                    } else {
+                        #[allow(unused_mut)]
+                        let mut g = EmbeddingGenerator::with_config(global_config).await;
+                        // Set batch_size and max_concurrent for Jina provider if applicable
+                        #[cfg(feature = "embeddings-jina")]
+                        {
+                            g.set_jina_batch_size(config.batch_size);
+                            g.set_jina_max_concurrent(config.max_concurrent);
                         }
+                        tracing::info!(
+                            target: "codegraph_mcp::indexer",
+                            "Active embeddings: {} (batch_size: {}, max_concurrent: {})",
+                            global_config.embedding.provider,
+                            config.batch_size,
+                            config.max_concurrent
+                        );
+                        g
                     }
-                }
-                #[cfg(not(feature = "embeddings-local"))]
-                {
-                    tracing::warn!(
-                        target: "codegraph_mcp::indexer",
-                        "CODEGRAPH_EMBEDDING_PROVIDER=local requested but the 'embeddings-local' feature is not enabled; using auto provider"
-                    );
-                    let g = EmbeddingGenerator::with_auto_from_env().await;
-                    // Set batch_size and max_concurrent for Jina provider if applicable
-                    #[cfg(feature = "embeddings-jina")]
-                    {
-                        g.set_jina_batch_size(config.batch_size);
-                        g.set_jina_max_concurrent(config.max_concurrent);
-                    }
-                    g
-                }
+                };
+                Some(embedder)
             } else {
-                #[allow(unused_mut)]
-                let mut g = EmbeddingGenerator::with_config(global_config).await;
-                // Set batch_size and max_concurrent for Jina provider if applicable
-                #[cfg(feature = "embeddings-jina")]
+                None
+            };
+            let embedding_model_name = global_config
+                .embedding
+                .model
+                .clone()
+                .unwrap_or_else(|| "jina-embeddings-v4".to_string());
+
+            let embedder_dimension = {
+                #[cfg(feature = "embeddings")]
                 {
-                    g.set_jina_batch_size(config.batch_size);
-                    g.set_jina_max_concurrent(config.max_concurrent);
+                    embedder
+                        .as_ref()
+                        .map(|embedder| embedder.dimension())
+                        .unwrap_or(global_config.embedding.dimension)
                 }
-                tracing::info!(
-                    target: "codegraph_mcp::indexer",
-                    "Active embeddings: {} (batch_size: {}, max_concurrent: {})",
-                    global_config.embedding.provider,
-                    config.batch_size,
-                    config.max_concurrent
-                );
-                g
-            }
-        };
-        let embedding_model_name = global_config
-            .embedding
-            .model
-            .clone()
-            .unwrap_or_else(|| "jina-embeddings-v4".to_string());
+                #[cfg(not(feature = "embeddings"))]
+                {
+                    config.vector_dimension
+                }
+            };
 
-        let embedder_dimension = {
-            #[cfg(feature = "embeddings")]
-            {
-                embedder.dimension()
-            }
-            #[cfg(not(feature = "embeddings"))]
-            {
-                config.vector_dimension
-            }
-        };
-
-        let env_vector_dim = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok());
-        let vector_dim = env_vector_dim.unwrap_or(embedder_dimension);
-        let embedding_column = resolve_surreal_embedding_column(vector_dim).with_context(|| {
+            let env_vector_dim = std::env::var("CODEGRAPH_EMBEDDING_DIMENSION")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok());
+            let vector_dim = env_vector_dim.unwrap_or(embedder_dimension);
+            let embedding_column = resolve_surreal_embedding_column(vector_dim).with_context(|| {
             format!(
                 "Unsupported embedding dimension {}. Supported dimensions: 384, 768, 1024, 2048, 2560, 4096.",
                 vector_dim
             )
         })?;
 
-        if let Some(v) = env_vector_dim {
-            info!(
-                "🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION={} → Surreal column {}",
-                v,
-                embedding_column.column_name()
-            );
-        } else {
-            info!(
-                "🧭 Embedding dimension resolved from provider ({}): {} → Surreal column {}",
-                global_config.embedding.provider,
-                vector_dim,
-                embedding_column.column_name()
-            );
-        }
+            if let Some(v) = env_vector_dim {
+                info!(
+                    "🧭 Embedding dimension override: CODEGRAPH_EMBEDDING_DIMENSION={} → Surreal column {}",
+                    v,
+                    embedding_column.column_name()
+                );
+            } else {
+                info!(
+                    "🧭 Embedding dimension resolved from provider ({}): {} → Surreal column {}",
+                    global_config.embedding.provider,
+                    vector_dim,
+                    embedding_column.column_name()
+                );
+            }
 
-        #[cfg(feature = "embeddings")]
-        let embedder = {
-            let mut embedder = embedder;
-            let mut identity = serde_json::to_value(&global_config.embedding)?;
-            identity.as_object_mut().unwrap().remove("openai_api_key");
-            identity.as_object_mut().unwrap().remove("jina_api_key");
-            identity.as_object_mut().unwrap().insert(
-                "active_model".into(),
-                serde_json::json!(embedding_model_name),
-            );
-            identity.as_object_mut().unwrap().insert(
-                "runtime".into(),
-                serde_json::json!([
-                    std::env::var("CODEGRAPH_LOCAL_DTYPE").unwrap_or_default(),
-                    std::env::var("CODEGRAPH_ONNX_MODEL_FILE").unwrap_or_default(),
-                    std::env::var("CODEGRAPH_ONNX_EP").unwrap_or_default(),
-                    std::env::var("CODEGRAPH_COREML_LOW_PRECISION").unwrap_or_default(),
-                ]),
-            );
-            embedder.configure_index_cache(
-                project_root.join(".codegraph/index-cache"),
-                &identity,
+            let vector_mode = codegraph_graph::vector_indexes::VectorIndexMode::from_env()?;
+            let vector_tables = Self::vector_tables(policies);
+            if vector_mode == codegraph_graph::vector_indexes::VectorIndexMode::Selected {
+                codegraph_graph::vector_indexes::ensure_ready(
+                    &surreal.lock().await.db(),
+                    vector_dim,
+                    &vector_tables,
+                )
+                .await?;
+            }
+            #[cfg(feature = "embeddings")]
+            let embedder = if let Some(mut embedder) = embedder {
+                let mut identity = serde_json::to_value(&global_config.embedding)?;
+                identity.as_object_mut().unwrap().remove("openai_api_key");
+                identity.as_object_mut().unwrap().remove("jina_api_key");
+                identity.as_object_mut().unwrap().insert(
+                    "active_model".into(),
+                    serde_json::json!(embedding_model_name),
+                );
+                identity.as_object_mut().unwrap().insert(
+                    "runtime".into(),
+                    serde_json::json!([
+                        std::env::var("CODEGRAPH_LOCAL_DTYPE").unwrap_or_default(),
+                        std::env::var("CODEGRAPH_ONNX_MODEL_FILE").unwrap_or_default(),
+                        std::env::var("CODEGRAPH_ONNX_EP").unwrap_or_default(),
+                        std::env::var("CODEGRAPH_COREML_LOW_PRECISION").unwrap_or_default(),
+                    ]),
+                );
+                embedder.configure_index_cache(
+                    project_root.join(".codegraph/index-cache"),
+                    &identity,
+                    vector_dim,
+                    &global_config.embedding.provider,
+                    config.batch_size,
+                )?;
+                Some(embedder)
+            } else {
+                None
+            };
+            Ok(Self {
+                config,
+                global_config: global_config.clone(),
+                progress: multi_progress,
+                parser,
+                surreal,
+                surreal_writer: Some(surreal_writer),
+                project_id,
+                organization_id,
+                repository_url,
+                domain,
+                embedding_model: embedding_model_name,
                 vector_dim,
-                &global_config.embedding.provider,
-                config.batch_size,
-            )?;
-            embedder
-        };
-        Ok(Self {
-            config,
-            global_config: global_config.clone(),
-            progress: multi_progress,
-            parser,
-            surreal,
-            surreal_writer: Some(surreal_writer),
-            project_id,
-            organization_id,
-            repository_url,
-            domain,
-            embedding_model: embedding_model_name,
-            vector_dim,
-            embedding_column,
-            project_root,
-            reconcile_lock: TokioMutex::new(()),
-            lsp_pool: Default::default(),
-            #[cfg(feature = "embeddings")]
-            chunk_pool,
-            #[cfg(feature = "embeddings")]
-            embedder,
+                embedding_column,
+                project_root,
+                reconcile_lock: TokioMutex::new(()),
+                lsp_pool: Default::default(),
+                policies,
+                startup_ms: startup.elapsed().as_millis() as u64,
+                lsp_support: TokioMutex::new(None),
+                #[cfg(feature = "embeddings")]
+                chunk_pool,
+                #[cfg(feature = "embeddings")]
+                embedder,
+            })
         })
     }
 
+    fn vector_tables(policies: crate::policy::InferencePolicies) -> Vec<&'static str> {
+        let mut tables = Vec::new();
+        if policies.embeddings == crate::policy::StagePolicy::Sync {
+            tables.push("chunks");
+        }
+        if policies.semantic == crate::policy::StagePolicy::Sync {
+            tables.push("symbol_embeddings");
+        }
+        tables
+    }
     pub async fn index_project(&self, path: impl AsRef<Path>) -> Result<IndexStats> {
         self.reconcile_project(path.as_ref(), self.config.force_reindex)
             .await
     }
 
-    pub async fn reconcile_project(&self, path: &Path, force: bool) -> Result<IndexStats> {
-        let _run = self.reconcile_lock.lock().await;
-        let start = std::time::Instant::now();
-        #[cfg(feature = "embeddings")]
-        let inference_before = self.embedder.inference_stats();
-        info!("Starting project indexing: {:?}", path);
-        self.log_surrealdb_status("pre-parse");
+    pub fn reconcile_project<'a>(
+        &'a self,
+        path: &'a Path,
+        force: bool,
+    ) -> futures::future::BoxFuture<'a, Result<IndexStats>> {
+        Box::pin(async move {
+            let _run = self.reconcile_lock.lock().await;
+            let start = std::time::Instant::now();
+            let mut phase_ms = std::collections::BTreeMap::new();
+            let writer_before = self
+                .surreal_writer
+                .as_ref()
+                .map(|writer| writer.metrics())
+                .unwrap_or_default();
+            #[cfg(feature = "embeddings")]
+            let inference_before = self
+                .embedder
+                .as_ref()
+                .map(|embedder| embedder.inference_stats())
+                .unwrap_or_default();
+            info!("Starting project indexing: {:?}", path);
+            self.log_surrealdb_status("pre-parse");
 
-        let file_config: codegraph_parser::file_collect::FileCollectionConfig =
-            (&self.config).into();
-        let all_files =
-            codegraph_parser::file_collect::collect_source_files_with_config(path, &file_config)?;
-        let source_snapshots = codegraph_parser::SourceSnapshots::capture(
-            &all_files,
-            crate::estimation::source_memory_budget(),
-            self.parser.concurrency(),
-        )
-        .await?;
+            let file_config: codegraph_parser::file_collect::FileCollectionConfig =
+                (&self.config).into();
+            let all_files = codegraph_parser::file_collect::collect_source_files_with_config(
+                path,
+                &file_config,
+            )?;
+            let source_snapshots = codegraph_parser::SourceSnapshots::capture(
+                &all_files,
+                crate::estimation::source_memory_budget(),
+                self.parser.concurrency(),
+            )
+            .await?;
 
-        use codegraph_core::artifact_cache::{ArtifactCache, fingerprint};
-        let state_cache = ArtifactCache::new(
-            self.project_root.join(".codegraph/index-cache"),
-            "project-catalog-v1",
-        );
-        let root = self.project_root.clone();
-        let support =
-            tokio::task::spawn_blocking(move || crate::reconciliation::support_fingerprints(&root))
-                .await??;
-        let mut embedding_config = serde_json::to_value(&self.global_config.embedding)?;
-        embedding_config
-            .as_object_mut()
-            .unwrap()
-            .remove("openai_api_key");
-        embedding_config
-            .as_object_mut()
-            .unwrap()
-            .remove("jina_api_key");
-        let policy: std::collections::BTreeMap<String, String> = [
-            "CODEGRAPH_SEMANTIC_RESOLUTION",
-            "CODEGRAPH_SEMANTIC_CANDIDATES",
-            "CODEGRAPH_EMBEDDING_POLICY",
-            "CODEGRAPH_LOCAL_DTYPE",
-            "CODEGRAPH_ONNX_MODEL_FILE",
-            "CODEGRAPH_ONNX_EP",
-            "CODEGRAPH_COREML_LOW_PRECISION",
-            "CODEGRAPH_MODEL_REVISION",
-            "CODEGRAPH_TOKENIZER_PATH",
-            "CODEGRAPH_CHUNK_SPLITTER",
-        ]
-        .into_iter()
-        .map(|key| (key.to_owned(), std::env::var(key).unwrap_or_default()))
-        .collect();
-        let input_fingerprint = fingerprint(&(
-            "project-input-v2",
-            &self.project_id,
-            source_snapshots
-                .iter()
-                .map(|source| (&source.path, &source.content_hash))
-                .collect::<std::collections::BTreeMap<_, _>>(),
-            &support,
-            self.config.indexing_tier,
-            &embedding_config,
-            &policy,
-            self.config.max_seq_len,
-            cfg!(feature = "embeddings"),
-            cfg!(feature = "ai-enhanced"),
-        ))?;
-        let mut response = self.surreal.lock().await.db().query(
+            phase_ms.insert(
+                "source_capture".to_owned(),
+                start.elapsed().as_millis() as u64,
+            );
+            let inputs_start = std::time::Instant::now();
+            use codegraph_core::artifact_cache::{ArtifactCache, fingerprint};
+            let state_cache = ArtifactCache::new(
+                self.project_root.join(".codegraph/index-cache"),
+                "project-catalog-v1",
+            );
+            let root = self.project_root.clone();
+            let support = tokio::task::spawn_blocking(move || {
+                crate::reconciliation::support_fingerprints(&root)
+            })
+            .await??;
+            let mut embedding_config = serde_json::to_value(&self.global_config.embedding)?;
+            embedding_config
+                .as_object_mut()
+                .unwrap()
+                .remove("openai_api_key");
+            embedding_config
+                .as_object_mut()
+                .unwrap()
+                .remove("jina_api_key");
+            let policy: std::collections::BTreeMap<String, String> = [
+                "CODEGRAPH_SEMANTIC_RESOLUTION",
+                "CODEGRAPH_SEMANTIC_CANDIDATES",
+                "CODEGRAPH_EMBEDDING_POLICY",
+                "CODEGRAPH_LOCAL_DTYPE",
+                "CODEGRAPH_ONNX_MODEL_FILE",
+                "CODEGRAPH_ONNX_EP",
+                "CODEGRAPH_COREML_LOW_PRECISION",
+                "CODEGRAPH_MODEL_REVISION",
+                "CODEGRAPH_TOKENIZER_PATH",
+                "CODEGRAPH_CHUNK_SPLITTER",
+                "CODEGRAPH_CHUNK_MAX_TOKENS",
+                "CODEGRAPH_CHUNK_OVERLAP_TOKENS",
+                "CODEGRAPH_CHUNK_SMART_SPLIT",
+                "CODEGRAPH_EMBEDDING_SKIP_CHUNKING",
+                "CODEGRAPH_ANALYZERS",
+                "CODEGRAPH_ANALYZERS_REQUIRE_TOOLS",
+                "CODEGRAPH_PROJECT_ID",
+                "CODEGRAPH_ORGANIZATION_ID",
+                "CODEGRAPH_REPOSITORY_URL",
+                "CODEGRAPH_DOMAIN",
+                "RUSTFLAGS",
+                "CARGO_BUILD_TARGET",
+                "RUSTUP_TOOLCHAIN",
+                "CODEGRAPH_VECTOR_INDEX_MODE",
+            ]
+            .into_iter()
+            .map(|key| (key.to_owned(), std::env::var(key).unwrap_or_default()))
+            .collect();
+            let mut external_support =
+                crate::analyzers::build_context::external_input_fingerprints(&self.project_root)?;
+            let mutable_model_epoch = if self.policies.needs_provider()
+                && std::env::var_os("CODEGRAPH_MODEL_REVISION").is_none()
+            {
+                let ttl = std::env::var("CODEGRAPH_EMBEDDING_CACHE_TTL_SECONDS")
+                    .ok()
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(3600)
+                    .max(1);
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs()
+                    / ttl
+            } else {
+                0
+            };
+            let tokenizer_fingerprint = std::env::var_os("CODEGRAPH_TOKENIZER_PATH")
+                .map(PathBuf::from)
+                .map(|path| crate::reconciliation::file_fingerprint(&path))
+                .transpose()?;
+            let scip_fingerprint =
+                if let Some(path) = std::env::var_os("CODEGRAPH_SCIP_INDEX").map(PathBuf::from) {
+                    Some(fingerprint(&(
+                        crate::reconciliation::file_fingerprint(&path)?,
+                        if path.with_extension("sources.json").exists() {
+                            Some(crate::reconciliation::file_fingerprint(
+                                &path.with_extension("sources.json"),
+                            )?)
+                        } else {
+                            None
+                        },
+                        std::env::var("CODEGRAPH_SCIP_TRUST_SOURCE").unwrap_or_default(),
+                    ))?)
+                } else {
+                    None
+                };
+            let make_fingerprint =
+                |external_support: &std::collections::BTreeMap<String, String>| {
+                    fingerprint(&(
+                        "project-input-v3",
+                        &self.project_id,
+                        source_snapshots
+                            .iter()
+                            .map(|source| (&source.path, &source.content_hash))
+                            .collect::<std::collections::BTreeMap<_, _>>(),
+                        &support,
+                        &external_support,
+                        &tokenizer_fingerprint,
+                        mutable_model_epoch,
+                        &scip_fingerprint,
+                        self.config.indexing_tier,
+                        &embedding_config,
+                        &policy,
+                        self.policies,
+                        self.config.max_seq_len,
+                        cfg!(feature = "embeddings"),
+                        cfg!(feature = "ai-enhanced"),
+                    ))
+                };
+            let mut input_fingerprint = make_fingerprint(&external_support)?;
+            let mut response = self.surreal.lock().await.db().query(
             "SELECT metadata.input_fingerprint AS fingerprint FROM project_metadata WHERE project_id = $project"
         ).bind(("project", self.project_id.clone())).await?.check()?;
-        let markers: Vec<serde_json::Value> = response.take(0)?;
-        let marker = markers
-            .first()
-            .and_then(|v| v.get("fingerprint"))
-            .and_then(|v| v.as_str());
-        let previous = state_cache
-            .get::<crate::reconciliation::Catalog>(&self.project_id)
-            .filter(|state| !force && marker == Some(state.fingerprint.as_str()));
-        if let Some(state) = &previous {
-            if state.fingerprint == input_fingerprint {
-                let mut stats = state.stats.clone();
-                stats.skipped = all_files.len();
-                stats.cached_files = all_files.len();
-                stats.index_ms = start.elapsed().as_millis() as u64;
-                return Ok(stats);
-            }
-        }
-        // Every run has the full symbol universe. Unchanged source uses cached ASTs.
-        let files_to_index = all_files.clone();
-        let mut next_catalog = crate::reconciliation::Catalog {
-            fingerprint: input_fingerprint.clone(),
-            ..Default::default()
-        };
-
-        let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
-        let path_env = std::env::var("PATH").unwrap_or_default();
-        let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
-        let needs_language_scan = analyzer_settings.lsp_enabled()
-            || analyzer_settings.build_context
-            || analyzer_settings.dataflow;
-        if needs_language_scan {
-            let registry = codegraph_parser::LanguageRegistry::new();
-            for (p, _) in &files_to_index {
-                if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
-                    analyzer_languages.insert(lang);
+            let markers: Vec<serde_json::Value> = response.take(0)?;
+            let marker = markers
+                .first()
+                .and_then(|v| v.get("fingerprint"))
+                .and_then(|v| v.as_str());
+            let previous = state_cache
+                .get::<crate::reconciliation::Catalog>(&self.project_id)
+                .filter(|state| !force && marker == Some(state.fingerprint.as_str()));
+            if let Some(state) = &previous {
+                if state.fingerprint == input_fingerprint {
+                    source_snapshots.validate_current().await?;
+                    let mut stats = state.stats.clone();
+                    stats.skipped = all_files.len();
+                    stats.cached_files = all_files.len();
+                    stats.index_ms = start.elapsed().as_millis() as u64;
+                    stats.startup_ms = self.startup_ms;
+                    stats.inference_texts = 0;
+                    stats.inference_tokens = 0;
+                    stats.embedding_cache_hits = 0;
+                    stats.source_read_operations = source_snapshots.read_operations;
+                    stats.source_read_bytes = source_snapshots.read_bytes;
+                    stats.writer_jobs_acked = 0;
+                    stats.writer_rows_acked = 0;
+                    stats.writer_payload_bytes_acked = 0;
+                    phase_ms.insert(
+                        "input_validation".into(),
+                        inputs_start.elapsed().as_millis() as u64,
+                    );
+                    stats.phase_ms = phase_ms;
+                    return Ok(stats);
                 }
             }
-        }
-        let analyzer_languages: Vec<codegraph_core::Language> =
-            analyzer_languages.into_iter().collect();
-        Self::validate_analyzer_tools(&analyzer_languages, analyzer_settings, &path_env)?;
-
-        let lsp_mode_label = match analyzer_settings.lsp_mode {
-            crate::analyzers::LspMode::Off => "off",
-            crate::analyzers::LspMode::SymbolsOnly => "symbols",
-            crate::analyzers::LspMode::SymbolsAndDefinitions => "symbols+definitions",
-        };
-        info!(
-            "🧭 Indexing tier: {:?} | analyzers: build_context={} lsp={} enrichment={} module_linking={} dataflow={} docs_contracts={} architecture={}",
-            self.config.indexing_tier,
-            analyzer_settings.build_context,
-            lsp_mode_label,
-            analyzer_settings.enrichment,
-            analyzer_settings.module_linking,
-            analyzer_settings.dataflow,
-            analyzer_settings.docs_contracts,
-            analyzer_settings.architecture
-        );
-
-        let build_context_nodes;
-        let build_context_edges;
-        let build_context_task = if analyzer_settings.build_context
-            && analyzer_languages.contains(&codegraph_core::Language::Rust)
-        {
-            let root = self.project_root.clone();
-            let project = self.project_id.clone();
-            Some(tokio::task::spawn_blocking(move || {
-                crate::analyzers::build_context::analyze_cargo_workspace(&root, &project)
-            }))
-        } else {
-            None
-        };
-
-        // STAGE 1: File Collection & Parsing
-        let files = files_to_index;
-        let total_files = files.len();
-
-        // Single progress bar for unified AST + fast_ml extraction
-        let ast_pb = self.create_progress_bar(
-            total_files as u64,
-            "🌳 Parsing & extracting (TreeSitter + FastML)",
-        );
-
-        // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
-        // Clone files for parsing (we need them again for metadata persistence)
-        let ast_cache = codegraph_core::artifact_cache::ArtifactCache::new(
-            self.project_root.join(".codegraph/index-cache"),
-            "unified-ast-v4",
-        );
-        let (mut nodes, mut edges, pstats) = crate::estimation::parse_snapshots_with_cache(
-            &self.parser,
-            files.clone(),
-            total_files as u64,
-            &source_snapshots,
-            Some(&ast_cache),
-        )
-        .await?;
-        let cache_budget = std::env::var("CODEGRAPH_AST_CACHE_BYTES")
-            .ok()
-            .and_then(|value| value.parse::<u64>().ok())
-            .unwrap_or(2 * 1024 * 1024 * 1024);
-        let cache_for_prune = ast_cache.clone();
-        if let Err(error) =
-            tokio::task::spawn_blocking(move || cache_for_prune.prune(cache_budget)).await?
-        {
-            warn!("AST cache eviction failed: {error}");
-        }
-        if pstats.failed_files > 0 {
-            return Err(anyhow!(
-                "{} source files failed parsing; file metadata will not be marked current",
-                pstats.failed_files
-            ));
-        }
-
-        let build_context_out = match build_context_task {
-            Some(task) => task.await??,
-            None => Default::default(),
-        };
-        build_context_nodes = build_context_out.nodes.len();
-        build_context_edges = build_context_out.edges.len();
-        if analyzer_settings.build_context
-            && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
-        {
-            nodes.extend(build_context_out.nodes);
-            edges.extend(build_context_out.edges);
-        }
-
-        let removed_edges = filter_edges_for_tier(self.config.indexing_tier, &mut edges);
-        if removed_edges > 0 {
-            info!(
-                "🧹 Tier edge filter removed {} edges (tier: {:?})",
-                removed_edges, self.config.indexing_tier
+            phase_ms.insert(
+                "input_validation".into(),
+                inputs_start.elapsed().as_millis() as u64,
             );
-        }
+            // Every run has the full symbol universe. Unchanged source uses cached ASTs.
+            let files_to_index = all_files.clone();
+            let mut next_catalog = crate::reconciliation::Catalog {
+                fingerprint: input_fingerprint.clone(),
+                ..Default::default()
+            };
 
-        self.finish_bar(
-            ast_pb,
-            format!(
-                "🌳 Parsed {} files | nodes: {} | edges: {}",
-                pstats.parsed_files,
-                nodes.len(),
-                edges.len()
-            ),
-        )?;
-
-        // Generate deterministic IDs and build old_id -> new_id mapping to update edge references
-        let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
-            std::collections::HashMap::with_capacity(nodes.len());
-        let mut identities: std::collections::HashMap<NodeId, std::collections::BTreeSet<String>> =
-            std::collections::HashMap::new();
-        for node in &nodes {
-            let id = codegraph_core::generate_node_id(
-                &self.project_id,
-                &node.location.file_path,
-                node.name.as_str(),
-                &node
-                    .node_type
-                    .as_ref()
-                    .map(|kind| format!("{kind:?}"))
-                    .unwrap_or_else(|| "Unknown".into()),
-                node.location.line,
-            );
-            identities.entry(id).or_default().insert(fingerprint(&(
-                &node.location,
-                &node.span,
-                node.metadata.attributes.get("qualified_name"),
-            ))?);
-        }
-        for node in nodes.iter_mut() {
-            let old_id = node.id;
-            node.set_deterministic_id(&self.project_id);
-            if identities
-                .get(&node.id)
-                .is_some_and(|identities| identities.len() > 1)
+            let support_fingerprint = fingerprint(&(&support, &external_support))?;
             {
-                let identity = format!(
-                    "{}#{}:{}",
-                    node.name,
-                    node.location.column,
-                    node.metadata
-                        .attributes
-                        .get("qualified_name")
-                        .map(String::as_str)
-                        .unwrap_or("")
+                let mut previous_support = self.lsp_support.lock().await;
+                if previous_support.as_ref() != Some(&support_fingerprint) {
+                    self.lsp_pool.clear().await;
+                    *previous_support = Some(support_fingerprint);
+                }
+            }
+            let analyzer_settings = AnalyzerSettings::for_tier(self.config.indexing_tier);
+            let path_env = std::env::var("PATH").unwrap_or_default();
+            let mut analyzer_languages: HashSet<codegraph_core::Language> = HashSet::new();
+            let needs_language_scan = analyzer_settings.lsp_enabled()
+                || analyzer_settings.build_context
+                || analyzer_settings.dataflow;
+            if needs_language_scan {
+                let registry = codegraph_parser::LanguageRegistry::new();
+                for (p, _) in &files_to_index {
+                    if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
+                        analyzer_languages.insert(lang);
+                    }
+                }
+            }
+            let analyzer_languages: Vec<codegraph_core::Language> =
+                analyzer_languages.into_iter().collect();
+            let scip_path = std::env::var_os("CODEGRAPH_SCIP_INDEX").map(PathBuf::from);
+            if scip_path.is_none() {
+                Self::validate_analyzer_tools(&analyzer_languages, analyzer_settings, &path_env)?;
+            }
+
+            let lsp_mode_label = match analyzer_settings.lsp_mode {
+                crate::analyzers::LspMode::Off => "off",
+                crate::analyzers::LspMode::SymbolsOnly => "symbols",
+                crate::analyzers::LspMode::SymbolsAndDefinitions => "symbols+definitions",
+            };
+            info!(
+                "🧭 Indexing tier: {:?} | analyzers: build_context={} lsp={} enrichment={} module_linking={} dataflow={} docs_contracts={} architecture={}",
+                self.config.indexing_tier,
+                analyzer_settings.build_context,
+                lsp_mode_label,
+                analyzer_settings.enrichment,
+                analyzer_settings.module_linking,
+                analyzer_settings.dataflow,
+                analyzer_settings.docs_contracts,
+                analyzer_settings.architecture
+            );
+
+            let build_context_nodes;
+            let build_context_edges;
+            let build_context_task = if analyzer_settings.build_context
+                && analyzer_languages.contains(&codegraph_core::Language::Rust)
+            {
+                let root = self.project_root.clone();
+                let project = self.project_id.clone();
+                Some(tokio::task::spawn_blocking(move || {
+                    crate::analyzers::build_context::analyze_cargo_workspace(&root, &project)
+                }))
+            } else {
+                None
+            };
+
+            // STAGE 1: File Collection & Parsing
+            let files = files_to_index;
+            let total_files = files.len();
+
+            // Single progress bar for unified AST + fast_ml extraction
+            let ast_pb = self.create_progress_bar(
+                total_files as u64,
+                "🌳 Parsing & extracting (TreeSitter + FastML)",
+            );
+
+            // REVOLUTIONARY: Use unified extraction for nodes + edges in single pass (FASTEST approach)
+            // Clone files for parsing (we need them again for metadata persistence)
+            let ast_cache = codegraph_core::artifact_cache::ArtifactCache::new(
+                self.project_root.join(".codegraph/index-cache"),
+                "unified-ast-v4",
+            );
+            let parse_start = std::time::Instant::now();
+            let (mut nodes, mut edges, pstats) = crate::estimation::parse_snapshots_with_cache(
+                &self.parser,
+                files.clone(),
+                total_files as u64,
+                &source_snapshots,
+                Some(&ast_cache),
+            )
+            .await?;
+            phase_ms.insert("ast_parse".into(), parse_start.elapsed().as_millis() as u64);
+            let analyzers_start = std::time::Instant::now();
+            let cache_budget = std::env::var("CODEGRAPH_AST_CACHE_BYTES")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(2 * 1024 * 1024 * 1024);
+            let cache_for_prune = ast_cache.clone();
+            if let Err(error) =
+                tokio::task::spawn_blocking(move || cache_for_prune.prune(cache_budget)).await?
+            {
+                warn!("AST cache eviction failed: {error}");
+            }
+            if pstats.failed_files > 0 {
+                return Err(anyhow!(
+                    "{} source files failed parsing; file metadata will not be marked current",
+                    pstats.failed_files
+                ));
+            }
+
+            let build_context_out = match build_context_task {
+                Some(task) => task.await??,
+                None => Default::default(),
+            };
+            external_support =
+                crate::analyzers::build_context::external_input_fingerprints(&self.project_root)?;
+            input_fingerprint = make_fingerprint(&external_support)?;
+            next_catalog.fingerprint = input_fingerprint.clone();
+            build_context_nodes = build_context_out.nodes.len();
+            build_context_edges = build_context_out.edges.len();
+            if analyzer_settings.build_context
+                && (!build_context_out.nodes.is_empty() || !build_context_out.edges.is_empty())
+            {
+                nodes.extend(build_context_out.nodes);
+                edges.extend(build_context_out.edges);
+            }
+
+            let removed_edges = filter_edges_for_tier(self.config.indexing_tier, &mut edges);
+            if removed_edges > 0 {
+                info!(
+                    "🧹 Tier edge filter removed {} edges (tier: {:?})",
+                    removed_edges, self.config.indexing_tier
                 );
-                node.id = codegraph_core::generate_node_id(
+            }
+
+            self.finish_bar(
+                ast_pb,
+                format!(
+                    "🌳 Parsed {} files | nodes: {} | edges: {}",
+                    pstats.parsed_files,
+                    nodes.len(),
+                    edges.len()
+                ),
+            )?;
+
+            // Generate deterministic IDs and build old_id -> new_id mapping to update edge references
+            let mut id_mapping: std::collections::HashMap<NodeId, NodeId> =
+                std::collections::HashMap::with_capacity(nodes.len());
+            let mut identities: std::collections::HashMap<
+                NodeId,
+                std::collections::BTreeSet<String>,
+            > = std::collections::HashMap::new();
+            for node in &nodes {
+                let id = codegraph_core::generate_node_id(
                     &self.project_id,
                     &node.location.file_path,
-                    &identity,
+                    node.name.as_str(),
                     &node
                         .node_type
                         .as_ref()
@@ -815,142 +953,190 @@ impl ProjectIndexer {
                         .unwrap_or_else(|| "Unknown".into()),
                     node.location.line,
                 );
+                identities.entry(id).or_default().insert(fingerprint(&(
+                    &node.location,
+                    &node.span,
+                    node.metadata.attributes.get("qualified_name"),
+                ))?);
             }
-            id_mapping.insert(old_id, node.id);
-            self.annotate_node(node);
-        }
-
-        // Update edge.from references to use new deterministic IDs
-        for edge in edges.iter_mut() {
-            if let Some(new_id) = id_mapping.get(&edge.from) {
-                edge.from = *new_id;
-            }
-            if let Some(target) = edge
-                .metadata
-                .get("target_node_id")
-                .and_then(|id| id.parse::<NodeId>().ok())
-                .and_then(|id| id_mapping.get(&id))
-            {
-                edge.metadata
-                    .insert("target_node_id".into(), target.to_string());
-            }
-            if let Some(span) = &edge.span {
-                edge.metadata.insert(
-                    "source_span".to_string(),
-                    format!("{}:{}", span.start_byte, span.end_byte),
-                );
-            }
-        }
-
-        nodes.sort_by_key(|node| node.id);
-        nodes.dedup_by_key(|node| node.id);
-
-        let mut lsp_enrichment_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
-        if analyzer_settings.lsp_enabled() && !analyzer_languages.is_empty() {
-            let start = std::time::Instant::now();
-            info!(
-                "🧠 Language-server analysis starting (mode: {}, languages: {:?})",
-                lsp_mode_label, analyzer_languages
-            );
-
-            let project_root = self.project_root.clone();
-            let path_env = path_env.clone();
-
-            let mut language_files: std::collections::HashMap<
-                codegraph_core::Language,
-                Vec<PathBuf>,
-            > = std::collections::HashMap::new();
-            let registry = codegraph_parser::LanguageRegistry::new();
-            for (p, _) in &files {
-                if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
-                    language_files.entry(lang).or_default().push(p.clone());
+            for node in nodes.iter_mut() {
+                let old_id = node.id;
+                node.set_deterministic_id(&self.project_id);
+                if identities
+                    .get(&node.id)
+                    .is_some_and(|identities| identities.len() > 1)
+                {
+                    let identity = format!(
+                        "{}#{}:{}",
+                        node.name,
+                        node.location.column,
+                        node.metadata
+                            .attributes
+                            .get("qualified_name")
+                            .map(String::as_str)
+                            .unwrap_or("")
+                    );
+                    node.id = codegraph_core::generate_node_id(
+                        &self.project_id,
+                        &node.location.file_path,
+                        &identity,
+                        &node
+                            .node_type
+                            .as_ref()
+                            .map(|kind| format!("{kind:?}"))
+                            .unwrap_or_else(|| "Unknown".into()),
+                        node.location.line,
+                    );
                 }
+                id_mapping.insert(old_id, node.id);
+                self.annotate_node(node);
             }
 
-            let mut grouped: std::collections::BTreeMap<
-                String,
-                (crate::analyzers::LspServerSpec, Vec<PathBuf>),
-            > = std::collections::BTreeMap::new();
-            for (language, files) in language_files {
-                if let Some(spec) = crate::analyzers::lsp_server_for_language(&language) {
-                    grouped
-                        .entry(spec.tool_name.to_owned())
-                        .or_insert_with(|| (spec.clone(), Vec::new()))
-                        .1
-                        .extend(files);
+            // Update edge.from references to use new deterministic IDs
+            for edge in edges.iter_mut() {
+                if let Some(new_id) = id_mapping.get(&edge.from) {
+                    edge.from = *new_id;
                 }
-            }
-            let mut total_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
-            for (_, (spec, mut files)) in grouped {
-                files.sort();
-                files.dedup();
-                let candidates =
-                    crate::analyzers::find_tool_candidates_on_path(spec.tool_name, &path_env);
-                if candidates.is_empty() {
-                    return Err(anyhow!(
-                        "Missing required analyzer tool: {}",
-                        spec.tool_name
-                    ));
+                if let Some(target) = edge
+                    .metadata
+                    .get("target_node_id")
+                    .and_then(|id| id.parse::<NodeId>().ok())
+                    .and_then(|id| id_mapping.get(&id))
+                {
+                    edge.metadata
+                        .insert("target_node_id".into(), target.to_string());
                 }
-                let mut success = false;
-                let mut last_error = None;
-                for tool in candidates {
-                    match crate::analyzers::lsp::enrich_async(
-                        &self.lsp_pool,
-                        Some(&source_snapshots),
-                        &tool,
-                        spec.args,
-                        spec.language_id,
-                        spec.name_joiner,
-                        analyzer_settings.lsp_definitions_enabled(),
-                        &project_root,
-                        &files,
-                        &mut nodes,
-                        &mut edges,
-                    )
-                    .await
-                    {
-                        Ok(stats) => {
-                            total_stats.nodes_enriched += stats.nodes_enriched;
-                            total_stats.edges_resolved += stats.edges_resolved;
-                            success = true;
-                            break;
-                        }
-                        Err(error) => {
-                            self.lsp_pool.clear().await;
-                            last_error = Some(error);
-                        }
-                    }
-                }
-                if !success {
-                    return Err(
-                        last_error.unwrap_or_else(|| anyhow!("No LSP server candidate succeeded"))
+                if let Some(span) = &edge.span {
+                    edge.metadata.insert(
+                        "source_span".to_string(),
+                        format!("{}:{}", span.start_byte, span.end_byte),
                     );
                 }
             }
 
-            lsp_enrichment_stats = total_stats;
-            info!(
-                "🧠 Language-server analysis complete: {} nodes enriched + {} edges resolved in {:.1?}",
-                lsp_enrichment_stats.nodes_enriched,
-                lsp_enrichment_stats.edges_resolved,
-                start.elapsed()
-            );
-        }
+            nodes.sort_by_key(|node| node.id);
+            nodes.dedup_by_key(|node| node.id);
 
-        let mut enrichment_stats = crate::analyzers::enrichment::EnrichmentStats::default();
-        if analyzer_settings.enrichment {
-            let start = std::time::Instant::now();
-            info!("🧾 Enrichment analysis starting (rustdoc + api surface)");
-            let project_root = self.project_root.clone();
+            let mut lsp_enrichment_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
+            if analyzer_settings.lsp_enabled()
+                && !analyzer_languages.is_empty()
+                && scip_path.is_none()
+            {
+                let start = std::time::Instant::now();
+                info!(
+                    "🧠 Language-server analysis starting (mode: {}, languages: {:?})",
+                    lsp_mode_label, analyzer_languages
+                );
 
-            let mut nodes_moved = Vec::new();
-            std::mem::swap(&mut nodes_moved, &mut nodes);
-            let mut edges_moved = Vec::new();
-            std::mem::swap(&mut edges_moved, &mut edges);
+                let project_root = self.project_root.clone();
+                let path_env = path_env.clone();
 
-            let sources = source_snapshots.clone();
-            let (mut nodes_updated, mut edges_updated, enrich_stats) =
+                let mut language_files: std::collections::HashMap<
+                    codegraph_core::Language,
+                    Vec<PathBuf>,
+                > = std::collections::HashMap::new();
+                let registry = codegraph_parser::LanguageRegistry::new();
+                for (p, _) in &files {
+                    if let Some(lang) = registry.detect_language(&p.to_string_lossy()) {
+                        language_files.entry(lang).or_default().push(p.clone());
+                    }
+                }
+
+                let mut grouped: std::collections::BTreeMap<
+                    String,
+                    (crate::analyzers::LspServerSpec, Vec<PathBuf>),
+                > = std::collections::BTreeMap::new();
+                for (language, files) in language_files {
+                    if let Some(spec) = crate::analyzers::lsp_server_for_language(&language) {
+                        grouped
+                            .entry(spec.tool_name.to_owned())
+                            .or_insert_with(|| (spec.clone(), Vec::new()))
+                            .1
+                            .extend(files);
+                    }
+                }
+                let mut total_stats = crate::analyzers::lsp::LspEnrichmentStats::default();
+                for (_, (spec, mut files)) in grouped {
+                    files.sort();
+                    files.dedup();
+                    let candidates =
+                        crate::analyzers::find_tool_candidates_on_path(spec.tool_name, &path_env);
+                    if candidates.is_empty() {
+                        return Err(anyhow!(
+                            "Missing required analyzer tool: {}",
+                            spec.tool_name
+                        ));
+                    }
+                    let mut success = false;
+                    let mut last_error = None;
+                    for tool in candidates {
+                        match crate::analyzers::lsp::enrich_async(
+                            &self.lsp_pool,
+                            Some(&source_snapshots),
+                            &tool,
+                            spec.args,
+                            spec.language_id,
+                            spec.name_joiner,
+                            analyzer_settings.lsp_definitions_enabled(),
+                            &project_root,
+                            &files,
+                            &mut nodes,
+                            &mut edges,
+                        )
+                        .await
+                        {
+                            Ok(stats) => {
+                                total_stats.nodes_enriched += stats.nodes_enriched;
+                                total_stats.edges_resolved += stats.edges_resolved;
+                                success = true;
+                                break;
+                            }
+                            Err(error) => {
+                                self.lsp_pool.clear().await;
+                                last_error = Some(error);
+                            }
+                        }
+                    }
+                    if !success {
+                        return Err(last_error
+                            .unwrap_or_else(|| anyhow!("No LSP server candidate succeeded")));
+                    }
+                }
+
+                lsp_enrichment_stats = total_stats;
+                info!(
+                    "🧠 Language-server analysis complete: {} nodes enriched + {} edges resolved in {:.1?}",
+                    lsp_enrichment_stats.nodes_enriched,
+                    lsp_enrichment_stats.edges_resolved,
+                    start.elapsed()
+                );
+            }
+
+            if let Some(path) = &scip_path {
+                if analyzer_settings.lsp_enabled() {
+                    lsp_enrichment_stats.edges_resolved = crate::analyzers::scip::import(
+                        path,
+                        &self.project_root,
+                        &source_snapshots,
+                        &mut nodes,
+                        &mut edges,
+                        analyzer_settings.lsp_definitions_enabled(),
+                    )?;
+                }
+            }
+            let mut enrichment_stats = crate::analyzers::enrichment::EnrichmentStats::default();
+            if analyzer_settings.enrichment {
+                let start = std::time::Instant::now();
+                info!("🧾 Enrichment analysis starting (rustdoc + api surface)");
+                let project_root = self.project_root.clone();
+
+                let mut nodes_moved = Vec::new();
+                std::mem::swap(&mut nodes_moved, &mut nodes);
+                let mut edges_moved = Vec::new();
+                std::mem::swap(&mut edges_moved, &mut edges);
+
+                let sources = source_snapshots.clone();
+                let (mut nodes_updated, mut edges_updated, enrich_stats) =
                 tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::enrichment::EnrichmentStats)> {
                     let mut nodes = nodes_moved;
                     let mut edges = edges_moved;
@@ -960,35 +1146,36 @@ impl ProjectIndexer {
                 })
                 .await??;
 
-            std::mem::swap(&mut nodes, &mut nodes_updated);
-            std::mem::swap(&mut edges, &mut edges_updated);
+                std::mem::swap(&mut nodes, &mut nodes_updated);
+                std::mem::swap(&mut edges, &mut edges_updated);
 
-            enrichment_stats = enrich_stats;
-            info!(
-                "🧾 Enrichment analysis complete: docs={} api_marked={} exports={} reexports={} feature_enables={} lsp_uses={} in {:.1?}",
-                enrichment_stats.docs_attached,
-                enrichment_stats.api_marked,
-                enrichment_stats.export_edges_added,
-                enrichment_stats.reexport_edges_added,
-                enrichment_stats.feature_enables_edges_added,
-                enrichment_stats.uses_edges_derived,
-                start.elapsed()
-            );
-        }
+                enrichment_stats = enrich_stats;
+                info!(
+                    "🧾 Enrichment analysis complete: docs={} api_marked={} exports={} reexports={} feature_enables={} lsp_uses={} in {:.1?}",
+                    enrichment_stats.docs_attached,
+                    enrichment_stats.api_marked,
+                    enrichment_stats.export_edges_added,
+                    enrichment_stats.reexport_edges_added,
+                    enrichment_stats.feature_enables_edges_added,
+                    enrichment_stats.uses_edges_derived,
+                    start.elapsed()
+                );
+            }
 
-        let mut module_linker_stats = crate::analyzers::module_linker::ModuleLinkerStats::default();
-        if analyzer_settings.module_linking {
-            let start = std::time::Instant::now();
-            info!("🧭 Module linking starting (modules, imports, containment)");
-            let project_root = self.project_root.clone();
-            let project_id = self.project_id.clone();
+            let mut module_linker_stats =
+                crate::analyzers::module_linker::ModuleLinkerStats::default();
+            if analyzer_settings.module_linking {
+                let start = std::time::Instant::now();
+                info!("🧭 Module linking starting (modules, imports, containment)");
+                let project_root = self.project_root.clone();
+                let project_id = self.project_id.clone();
 
-            let mut nodes_moved = Vec::new();
-            std::mem::swap(&mut nodes_moved, &mut nodes);
-            let mut edges_moved = Vec::new();
-            std::mem::swap(&mut edges_moved, &mut edges);
+                let mut nodes_moved = Vec::new();
+                std::mem::swap(&mut nodes_moved, &mut nodes);
+                let mut edges_moved = Vec::new();
+                std::mem::swap(&mut edges_moved, &mut edges);
 
-            let (mut nodes_updated, mut edges_updated, stats) =
+                let (mut nodes_updated, mut edges_updated, stats) =
                 tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::module_linker::ModuleLinkerStats)> {
                     let mut nodes = nodes_moved;
                     let mut edges = edges_moved;
@@ -1002,37 +1189,37 @@ impl ProjectIndexer {
                 })
                 .await??;
 
-            std::mem::swap(&mut nodes, &mut nodes_updated);
-            std::mem::swap(&mut edges, &mut edges_updated);
-            for node in nodes.iter_mut() {
-                self.annotate_node(node);
+                std::mem::swap(&mut nodes, &mut nodes_updated);
+                std::mem::swap(&mut edges, &mut edges_updated);
+                for node in nodes.iter_mut() {
+                    self.annotate_node(node);
+                }
+
+                module_linker_stats = stats;
+                info!(
+                    "🧭 Module linking complete: modules={} contains={} imports={} in {:.1?}",
+                    module_linker_stats.module_nodes_added,
+                    module_linker_stats.contains_edges_added,
+                    module_linker_stats.module_import_edges_added,
+                    start.elapsed()
+                );
             }
 
-            module_linker_stats = stats;
-            info!(
-                "🧭 Module linking complete: modules={} contains={} imports={} in {:.1?}",
-                module_linker_stats.module_nodes_added,
-                module_linker_stats.contains_edges_added,
-                module_linker_stats.module_import_edges_added,
-                start.elapsed()
-            );
-        }
+            let mut dataflow_stats = crate::analyzers::dataflow::DataflowStats::default();
+            if analyzer_settings.dataflow
+                && analyzer_languages.contains(&codegraph_core::Language::Rust)
+            {
+                let start = std::time::Instant::now();
+                info!("🌊 Dataflow enrichment starting (local def-use)");
+                let project_root = self.project_root.clone();
+                let project_id = self.project_id.clone();
 
-        let mut dataflow_stats = crate::analyzers::dataflow::DataflowStats::default();
-        if analyzer_settings.dataflow
-            && analyzer_languages.contains(&codegraph_core::Language::Rust)
-        {
-            let start = std::time::Instant::now();
-            info!("🌊 Dataflow enrichment starting (local def-use)");
-            let project_root = self.project_root.clone();
-            let project_id = self.project_id.clone();
+                let mut nodes_moved = Vec::new();
+                std::mem::swap(&mut nodes_moved, &mut nodes);
+                let mut edges_moved = Vec::new();
+                std::mem::swap(&mut edges_moved, &mut edges);
 
-            let mut nodes_moved = Vec::new();
-            std::mem::swap(&mut nodes_moved, &mut nodes);
-            let mut edges_moved = Vec::new();
-            std::mem::swap(&mut edges_moved, &mut edges);
-
-            let (mut nodes_updated, mut edges_updated, stats) =
+                let (mut nodes_updated, mut edges_updated, stats) =
                 tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::dataflow::DataflowStats)> {
                     let mut nodes = nodes_moved;
                     let mut edges = edges_moved;
@@ -1046,39 +1233,39 @@ impl ProjectIndexer {
                 })
                 .await??;
 
-            std::mem::swap(&mut nodes, &mut nodes_updated);
-            std::mem::swap(&mut edges, &mut edges_updated);
-            for node in nodes.iter_mut() {
-                self.annotate_node(node);
+                std::mem::swap(&mut nodes, &mut nodes_updated);
+                std::mem::swap(&mut edges, &mut edges_updated);
+                for node in nodes.iter_mut() {
+                    self.annotate_node(node);
+                }
+
+                dataflow_stats = stats;
+                info!(
+                    "🌊 Dataflow enrichment complete: vars={} defines={} uses={} flows={} returns={} mutates={} in {:.1?}",
+                    dataflow_stats.variable_nodes_added,
+                    dataflow_stats.defines_edges_added,
+                    dataflow_stats.uses_edges_added,
+                    dataflow_stats.flows_to_edges_added,
+                    dataflow_stats.returns_edges_added,
+                    dataflow_stats.mutates_edges_added,
+                    start.elapsed()
+                );
             }
 
-            dataflow_stats = stats;
-            info!(
-                "🌊 Dataflow enrichment complete: vars={} defines={} uses={} flows={} returns={} mutates={} in {:.1?}",
-                dataflow_stats.variable_nodes_added,
-                dataflow_stats.defines_edges_added,
-                dataflow_stats.uses_edges_added,
-                dataflow_stats.flows_to_edges_added,
-                dataflow_stats.returns_edges_added,
-                dataflow_stats.mutates_edges_added,
-                start.elapsed()
-            );
-        }
+            let mut docs_contracts_stats =
+                crate::analyzers::docs_contracts::DocsContractsStats::default();
+            if analyzer_settings.docs_contracts {
+                let start = std::time::Instant::now();
+                info!("📚 Docs/contracts linking starting");
+                let project_root = self.project_root.clone();
+                let project_id = self.project_id.clone();
 
-        let mut docs_contracts_stats =
-            crate::analyzers::docs_contracts::DocsContractsStats::default();
-        if analyzer_settings.docs_contracts {
-            let start = std::time::Instant::now();
-            info!("📚 Docs/contracts linking starting");
-            let project_root = self.project_root.clone();
-            let project_id = self.project_id.clone();
+                let mut nodes_moved = Vec::new();
+                std::mem::swap(&mut nodes_moved, &mut nodes);
+                let mut edges_moved = Vec::new();
+                std::mem::swap(&mut edges_moved, &mut edges);
 
-            let mut nodes_moved = Vec::new();
-            std::mem::swap(&mut nodes_moved, &mut nodes);
-            let mut edges_moved = Vec::new();
-            std::mem::swap(&mut edges_moved, &mut edges);
-
-            let (mut nodes_updated, mut edges_updated, stats) =
+                let (mut nodes_updated, mut edges_updated, stats) =
                 tokio::task::spawn_blocking(move || -> Result<(Vec<CodeNode>, Vec<EdgeRelationship>, crate::analyzers::docs_contracts::DocsContractsStats)> {
                     let mut nodes = nodes_moved;
                     let mut edges = edges_moved;
@@ -1092,718 +1279,811 @@ impl ProjectIndexer {
                 })
                 .await??;
 
-            std::mem::swap(&mut nodes, &mut nodes_updated);
-            std::mem::swap(&mut edges, &mut edges_updated);
-            for node in nodes.iter_mut() {
-                self.annotate_node(node);
-            }
+                std::mem::swap(&mut nodes, &mut nodes_updated);
+                std::mem::swap(&mut edges, &mut edges_updated);
+                for node in nodes.iter_mut() {
+                    self.annotate_node(node);
+                }
 
-            docs_contracts_stats = stats;
-            info!(
-                "📚 Docs/contracts linking complete: docs={} documents={} specifies={} in {:.1?}",
-                docs_contracts_stats.document_nodes_added,
-                docs_contracts_stats.document_edges_added,
-                docs_contracts_stats.specification_edges_added,
-                start.elapsed()
-            );
-        }
-
-        let mut architecture_stats = crate::analyzers::architecture::ArchitectureStats::default();
-        if analyzer_settings.architecture {
-            let start = std::time::Instant::now();
-            info!("🏛️  Architecture analysis starting (cycles, boundaries)");
-
-            architecture_stats = crate::analyzers::architecture::analyze_architecture(
-                &self.project_root,
-                &nodes,
-                &mut edges,
-            )?;
-            info!(
-                "🏛️  Architecture analysis complete: package_cycles={} boundary_violations={} in {:.1?}",
-                architecture_stats.package_cycles_detected,
-                architecture_stats.boundary_violations_added,
-                start.elapsed()
-            );
-        }
-
-        // Store counts for final summary (before consumption)
-        let total_nodes_extracted = nodes.len();
-        let total_edges_extracted = edges.len();
-
-        // Build chunk plan early so we can annotate nodes with chunk counts before persistence
-        #[cfg(feature = "embeddings")]
-        let chunk_plan: ChunkPlan = {
-            let start = std::time::Instant::now();
-            // Spinner to show chunking progress (Rayon internal; no granular ticks available)
-            let chunk_pb = self.progress.add(ProgressBar::new_spinner());
-            chunk_pb.set_style(
-                ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
-                    .unwrap()
-                    .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ "),
-            );
-            chunk_pb.set_message("🧩 Building chunk plan (chunking nodes)");
-            chunk_pb.enable_steady_tick(std::time::Duration::from_millis(120));
-
-            let chunker = || {
-                self.embedder
-                    .chunk_nodes_with_source_lookup(&nodes, |file| {
-                        source_snapshots
-                            .get(file)
-                            .and_then(|snapshot| snapshot.contents().ok())
-                    })
-            };
-            let plan = self.chunk_pool.install(chunker);
-            let elapsed = start.elapsed();
-            self.finish_bar(
-                chunk_pb,
-                format!(
-                    "🧩 Chunk plan built: {} nodes → {} chunks in {:.1?}",
-                    plan.stats.total_nodes, plan.stats.total_chunks, elapsed
-                ),
-            )?;
-            if plan.stats.total_chunks == 0 && !nodes.is_empty() {
-                warn!(
-                    "Chunking produced zero chunks. Check CODEGRAPH_EMBEDDING_SKIP_CHUNKING, embedding provider availability, and model max_tokens settings."
+                docs_contracts_stats = stats;
+                info!(
+                    "📚 Docs/contracts linking complete: docs={} documents={} specifies={} in {:.1?}",
+                    docs_contracts_stats.document_nodes_added,
+                    docs_contracts_stats.document_edges_added,
+                    docs_contracts_stats.specification_edges_added,
+                    start.elapsed()
                 );
             }
-            plan
-        };
-        #[cfg(not(feature = "embeddings"))]
-        {
-            info!("⚠️ Embeddings feature disabled at compile time; chunking skipped");
-            let _chunk_plan: Option<()> = None;
-        }
 
-        #[cfg(feature = "embeddings")]
-        {
-            let mut node_chunk_counts: std::collections::HashMap<usize, usize> =
-                std::collections::HashMap::new();
-            for meta in &chunk_plan.metas {
-                *node_chunk_counts.entry(meta.node_index).or_insert(0) += 1;
+            let mut architecture_stats =
+                crate::analyzers::architecture::ArchitectureStats::default();
+            if analyzer_settings.architecture {
+                let start = std::time::Instant::now();
+                info!("🏛️  Architecture analysis starting (cycles, boundaries)");
+
+                architecture_stats = crate::analyzers::architecture::analyze_architecture(
+                    &self.project_root,
+                    &nodes,
+                    &mut edges,
+                )?;
+                info!(
+                    "🏛️  Architecture analysis complete: package_cycles={} boundary_violations={} in {:.1?}",
+                    architecture_stats.package_cycles_detected,
+                    architecture_stats.boundary_violations_added,
+                    start.elapsed()
+                );
             }
 
-            for (idx, node) in nodes.iter_mut().enumerate() {
-                let count = node_chunk_counts.get(&idx).cloned().unwrap_or(0);
-                node.metadata
-                    .attributes
-                    .insert("chunk_count".to_string(), count.to_string());
-            }
-        }
-
-        let success_rate = if pstats.total_files > 0 {
-            (pstats.parsed_files as f64 / pstats.total_files as f64) * 100.0
-        } else {
-            100.0
-        };
-
-        let parse_completion_msg = format!(
-            "🌳 Unified fast_ml + AST extraction complete: {}/{} files (✅ {:.1}% success) | 📊 {} nodes + {} edges | ⚡ {:.0} lines/s",
-            pstats.parsed_files,
-            pstats.total_files,
-            success_rate,
-            total_nodes_extracted,
-            total_edges_extracted,
-            pstats.lines_per_second
-        );
-
-        // Enhanced parsing statistics
-        info!("🌳 TreeSitter AST parsing results:");
-        info!(
-            "   📊 Semantic nodes extracted: {} (functions, structs, classes, etc.)",
-            total_nodes_extracted
-        );
-        info!(
-            "   🔗 Code relationships extracted: {} (calls, imports, dependencies)",
-            total_edges_extracted
-        );
-        info!(
-            "   📈 Extraction efficiency: {:.1} nodes/file | {:.1} edges/file",
-            total_nodes_extracted as f64 / pstats.parsed_files.max(1) as f64,
-            total_edges_extracted as f64 / pstats.parsed_files.max(1) as f64
-        );
-        info!(
-            "   🎯 Sample nodes: {:?}",
-            nodes.iter().take(3).map(|n| &n.name).collect::<Vec<_>>()
-        );
-        self.log_surrealdb_status("post-parse");
-
-        if nodes.is_empty() {
-            warn!("No nodes generated from parsing! Check parser implementation.");
-            warn!(
-                "Parsing stats: {} files, {} lines processed",
-                pstats.parsed_files, pstats.total_lines
+            phase_ms.insert(
+                "analyzers".into(),
+                analyzers_start.elapsed().as_millis() as u64,
             );
-        }
+            let chunks_start = std::time::Instant::now();
+            // Store counts for final summary (before consumption)
+            let total_nodes_extracted = nodes.len();
+            let total_edges_extracted = edges.len();
 
-        // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
-        // Parsing, analyzer validation and chunk preparation must succeed before replacing
-        // the last usable graph. A failed parse must never erase the previous index.
-        self.flush_surreal_writer().await?;
-        // Remove the ready marker before the first mutation; interrupted runs cannot skip.
-        self.surreal
-            .lock()
-            .await
-            .db()
-            .query("DELETE project_metadata WHERE project_id = $project")
-            .bind(("project", self.project_id.clone()))
-            .await?
-            .check()?;
-        for node in &nodes {
-            next_catalog.nodes.insert(
-                node.id.to_string(),
-                crate::reconciliation::node_digest(node)?,
-            );
-        }
-        let store_nodes_pb = self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes");
-        let mut stats = IndexStats {
-            files: pstats.parsed_files,
-            lines: pstats.total_lines,
-            skipped: pstats.cached_files,
-            cached_files: pstats.cached_files,
-            analyzers_enabled: analyzer_settings.any_enabled(),
-            build_context_nodes,
-            build_context_edges,
-            lsp_nodes_enriched: lsp_enrichment_stats.nodes_enriched,
-            lsp_edges_resolved: lsp_enrichment_stats.edges_resolved,
-            docs_attached: enrichment_stats.docs_attached,
-            export_edges_added: enrichment_stats.export_edges_added,
-            reexport_edges_added: enrichment_stats.reexport_edges_added,
-            feature_enables_edges_added: enrichment_stats.feature_enables_edges_added,
-            uses_edges_derived: enrichment_stats.uses_edges_derived,
-            module_nodes_added: module_linker_stats.module_nodes_added,
-            module_contains_edges_added: module_linker_stats.contains_edges_added,
-            module_import_edges_added: module_linker_stats.module_import_edges_added,
-            dataflow_variable_nodes_added: dataflow_stats.variable_nodes_added,
-            dataflow_defines_edges_added: dataflow_stats.defines_edges_added,
-            dataflow_uses_edges_added: dataflow_stats.uses_edges_added,
-            dataflow_flows_to_edges_added: dataflow_stats.flows_to_edges_added,
-            dataflow_returns_edges_added: dataflow_stats.returns_edges_added,
-            dataflow_mutates_edges_added: dataflow_stats.mutates_edges_added,
-            doc_nodes_added: docs_contracts_stats.document_nodes_added,
-            document_edges_added: docs_contracts_stats.document_edges_added,
-            specification_edges_added: docs_contracts_stats.specification_edges_added,
-            package_cycles_detected: architecture_stats.package_cycles_detected,
-            boundary_violations_added: architecture_stats.boundary_violations_added,
-            ..Default::default()
-        };
-
-        for node in nodes.iter() {
-            match node.node_type {
-                Some(NodeType::Function) => stats.functions += 1,
-                Some(NodeType::Class) => stats.classes += 1,
-                Some(NodeType::Struct) => stats.structs += 1,
-                Some(NodeType::Trait) => stats.traits += 1,
-                _ => {}
-            }
-        }
-        let storage_batch = self.config.batch_size.max(1);
-        for chunk in nodes.chunks(storage_batch) {
-            let dirty: Vec<_> = chunk
-                .iter()
-                .filter(|node| {
-                    previous
-                        .as_ref()
-                        .and_then(|state| state.nodes.get(&node.id.to_string()))
-                        != next_catalog.nodes.get(&node.id.to_string())
-                })
-                .cloned()
-                .collect();
-            if !dirty.is_empty() {
-                self.persist_nodes_batch(&dirty).await?;
-            }
-            store_nodes_pb.inc(chunk.len() as u64);
-        }
-        self.flush_surreal_writer().await?;
-        self.finish_bar(store_nodes_pb, "📈 Nodes stored")?;
-        self.log_surreal_node_count(total_nodes_extracted).await;
-
-        #[cfg(feature = "embeddings")]
-        let total_chunks = chunk_plan.chunks.len() as u64;
-        #[cfg(not(feature = "embeddings"))]
-        let total_chunks = 0u64;
-        let embed_pb = self.create_batch_progress_bar(
-            total_chunks,
-            self.config.batch_size,
-            "🧠 Embedding chunks (vector batch)",
-        );
-        let chunk_store_pb = self.create_batch_progress_bar(
-            total_chunks,
-            self.config.batch_size,
-            "🧩 Persisting chunk embeddings",
-        );
-        let batch = self.config.batch_size.max(1);
-        info!(
-            "   ⚙️ Effective embedding batch size: {} (CODEGRAPH_EMBEDDINGS_BATCH_SIZE clamped to 512 for DB writes)",
-            batch
-        );
-        #[allow(unused_mut)]
-        #[cfg(feature = "embeddings")]
-        let mut processed: u64;
-        #[cfg(not(feature = "embeddings"))]
-        let processed: u64 = 0;
-
-        // Enhanced embedding phase logging
-        let provider = &self.global_config.embedding.provider;
-        info!("💾 Starting semantic embedding generation:");
-        info!(
-            "   🤖 Provider: {} ({}-dimensional embeddings)",
-            provider, self.vector_dim
-        );
-        info!(
-            "   🗄️ SurrealDB column: {}",
-            self.embedding_column.column_name()
-        );
-
-        let total_nodes = nodes.len() as u64;
-        info!("   📊 Nodes to embed: {} semantic entities", total_nodes);
-        info!(
-            "   ⚡ Batch size: {} (optimized for {} system)",
-            batch,
-            self.estimate_system_memory()
-        );
-        info!("   🎯 Target: Enable similarity search and AI-powered analysis");
-        // Embed chunks and persist chunk embeddings
-        #[cfg(feature = "embeddings")]
-        {
-            use futures::stream::{self, StreamExt};
-            use std::sync::atomic::{AtomicU64, Ordering};
-
-            // To avoid giant DB payloads, tie chunk grouping to the DB batch size (which may be lower
-            // than the embedding batch size). This keeps both embedding and DB writes in smaller slices.
-            // Also ensure we never exceed the embedding batch size, so the embedder isn’t overfed.
-            let chunk_batch_size = batch.max(1);
-
-            let mut pending_chunks = Vec::new();
-            for (index, (chunk, meta)) in
-                chunk_plan.chunks.iter().zip(&chunk_plan.metas).enumerate()
+            // Build chunk plan early so we can annotate nodes with chunk counts before persistence
+            #[cfg(feature = "embeddings")]
+            let chunk_plan: ChunkPlan = if self.policies.embeddings
+                == crate::policy::StagePolicy::Sync
             {
-                let node = &nodes[meta.node_index];
-                let id = ChunkEmbeddingRecord::identity(&node.id.to_string(), meta.chunk_index);
-                let hash = fingerprint(&(
-                    &chunk.text,
-                    &embedding_config,
-                    &policy,
-                    &self.embedding_model,
-                    self.vector_dim,
-                ))?;
-                if previous
-                    .as_ref()
-                    .and_then(|state| state.chunk_hashes.get(&id))
-                    != Some(&hash)
-                {
-                    pending_chunks.push(index);
-                }
-                next_catalog.chunks.insert(id.clone());
-                next_catalog.chunk_hashes.insert(id, hash);
-            }
-            let reused_chunks = chunk_plan.chunks.len() - pending_chunks.len();
-            let chunk_batches = pending_chunks.chunks(chunk_batch_size).map(|indices| {
-                (
-                    indices
-                        .iter()
-                        .map(|index| chunk_plan.chunks[*index].text.clone())
-                        .collect::<Vec<_>>(),
-                    indices
-                        .iter()
-                        .map(|index| chunk_plan.metas[*index].clone())
-                        .collect::<Vec<_>>(),
-                )
-            });
+                let start = std::time::Instant::now();
+                // Spinner to show chunking progress (Rayon internal; no granular ticks available)
+                let chunk_pb = self.progress.add(ProgressBar::new_spinner());
+                chunk_pb.set_style(
+                    ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                        .unwrap()
+                        .tick_chars("⠁⠂⠄⡀⢀⠠⠐⠈ "),
+                );
+                chunk_pb.set_message("🧩 Building chunk plan (chunking nodes)");
+                chunk_pb.enable_steady_tick(std::time::Duration::from_millis(120));
 
-            let processed_atomic = Arc::new(AtomicU64::new(0));
-            let max_concurrent = self.config.max_concurrent.max(1);
-            // DB batch size: prefer explicit env override, otherwise match embedding batch size
-            let chunk_db_batch = chunk_embedding_db_batch_size(batch);
-            let embedder = &self.embedder;
-
-            let mut batch_stream = stream::iter(chunk_batches.map(|(texts, metas)| async move {
-                let embs = embedder.embed_texts_batched(&texts).await;
-                (texts, metas, embs)
-            }))
-            .buffer_unordered(max_concurrent);
-
-            while let Some((texts, metas, embs_result)) = batch_stream.next().await {
-                let embs: Vec<Vec<f32>> = embs_result?;
-                if embs.len() != metas.len() {
-                    return Err(anyhow!(
-                        "Chunk embedding cardinality mismatch: {} vectors for {} inputs",
-                        embs.len(),
-                        metas.len()
-                    ));
-                }
-
-                let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(metas.len());
-                for ((meta, text), emb) in metas.iter().zip(texts.iter()).zip(embs.iter()) {
-                    if let Some(node) = nodes.get(meta.node_index) {
-                        if emb.len() != self.vector_dim
-                            || emb.iter().any(|value| !value.is_finite())
-                        {
-                            return Err(anyhow!(
-                                "Invalid chunk vector for {}: dimension {}, expected {}",
-                                node.id,
-                                emb.len(),
-                                self.vector_dim
-                            ));
-                        }
-                        records.push(ChunkEmbeddingRecord::new(
-                            &node.id.to_string(),
-                            meta.chunk_index,
-                            text.clone(),
-                            emb,
-                            &self.embedding_model,
-                            self.embedding_column.column_name(),
-                            &self.project_id,
-                        ));
-                    }
-                }
-
-                next_catalog
-                    .chunks
-                    .extend(records.iter().map(|record| record.id.clone()));
-                for batch in records.chunks(chunk_db_batch) {
-                    self.enqueue_chunk_embeddings(batch.to_vec()).await?;
-                }
-
-                let done = processed_atomic.fetch_add(metas.len() as u64, Ordering::Relaxed)
-                    + metas.len() as u64;
-                embed_pb.set_position(done.min(total_chunks));
-                chunk_store_pb.set_position(done.min(total_chunks));
-            }
-
-            processed = processed_atomic.load(Ordering::Relaxed) + reused_chunks as u64;
-        }
-        #[cfg(not(feature = "embeddings"))]
-        let processed: u64 = 0;
-        let embedding_rate = if total_chunks > 0 {
-            processed as f64 / total_chunks as f64 * 100.0
-        } else {
-            100.0
-        };
-
-        let provider = &self.global_config.embedding.provider;
-        let embed_completion_msg = format!(
-            "💾 Semantic embeddings complete: {}/{} chunks (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Batch: {}",
-            processed,
-            total_chunks,
-            embedding_rate,
-            provider,
-            self.vector_dim,
-            self.config.batch_size
-        );
-        self.finish_bar(embed_pb, embed_completion_msg.clone())?;
-        self.finish_bar(
-            chunk_store_pb,
-            format!(
-                "🧩 Chunk embeddings queued for persistence: {}/{} batches",
-                total_chunks, total_chunks
-            ),
-        )?;
-
-        #[cfg(feature = "embeddings")]
-        {
-            // Ensure all chunk embeddings are flushed to SurrealDB before continuing
-            self.flush_surreal_writer().await?;
-            self.log_surreal_chunk_count(total_chunks as usize).await;
-        }
-
-        // Node embedding: keep pooled embedding as average of its chunks
-        #[cfg(feature = "embeddings")]
-        {
-            // For now, skip storing node-level embedding when chunking is enabled.
-            // Retrieval should use chunk embeddings directly.
-        }
-
-        stats.embeddings = processed as usize;
-
-        // Enhanced embedding completion statistics
-        info!("💾 Semantic embedding generation results:");
-        info!(
-            "   🎯 Vector search enabled: {} nodes embedded for similarity matching",
-            processed
-        );
-        info!("   📐 Embedding dimensions: {}", self.vector_dim);
-        info!(
-            "   🤖 Provider performance: {} with batch optimization",
-            provider
-        );
-        info!("   🔍 Capabilities unlocked: Vector search, semantic analysis, AI-powered tools");
-
-        // CRITICAL FIX: Preserve working ONNX embedding session for AI semantic matching
-        // Original reset caused fresh embedder creation to fail with ONNX resource conflicts,
-        // falling back to random hash embeddings (0% AI effectiveness).
-        // Keeping the working ONNX session ensures real embeddings for AI semantic matching.
-        // Tradeoff: Slightly more memory usage during post-processing (acceptable on M4 Max).
-        #[cfg(feature = "embeddings")]
-        {
-            // self.embedder = codegraph_vector::EmbeddingGenerator::default();
-            tracing::info!("🔧 Preserving working ONNX embedder session for AI semantic matching");
-        }
-
-        tracing::info!(
-            target: "codegraph_mcp::indexer",
-            "Vector indexing handled by SurrealDB; local FAISS generation removed"
-        );
-
-        // Resolve exact/contextual targets once before any semantic inference.
-        let resolution_start = std::time::Instant::now();
-        let catalog = crate::resolution::SymbolCatalog::new(&nodes);
-        let symbol_map = catalog.unique_aliases();
-        let mut normalized = HashMap::new();
-        let mut targets = Vec::with_capacity(edges.len());
-        let mut exact_count = 0;
-        let mut lexical_count = 0;
-        let mut lexical_cache = HashMap::new();
-        for edge in &edges {
-            let mut target = catalog.exact(edge, &[]);
-            if target.is_none() {
-                let variants = normalized.entry(edge.to.clone()).or_insert_with(|| {
-                    let mut variants = Self::normalize_symbol_target(&edge.to);
-                    if edge.to.starts_with("_R")
-                        || edge.to.starts_with("_ZN")
-                        || edge.to.contains('<')
-                    {
-                        variants.extend(Self::normalize_rust_symbol(&edge.to));
-                        variants.sort();
-                        variants.dedup();
-                    }
-                    variants
-                });
-                target = catalog.exact(edge, variants);
-            }
-            if target.is_some() {
-                exact_count += 1;
-            }
-            if target.is_none() && !catalog.ambiguous(&edge.to) {
-                target = *lexical_cache
-                    .entry((edge.from, edge.to.clone()))
-                    .or_insert_with(|| catalog.fuzzy(edge));
-                if target.is_some() {
-                    lexical_count += 1;
-                }
-            }
-            targets.push(target);
-        }
-        #[cfg(feature = "ai-enhanced")]
-        {
-            let policy =
-                std::env::var("CODEGRAPH_SEMANTIC_RESOLUTION").unwrap_or_else(|_| "sync".into());
-            if !matches!(policy.as_str(), "sync" | "off") {
-                return Err(anyhow!("CODEGRAPH_SEMANTIC_RESOLUTION must be sync or off"));
-            }
-            if policy == "sync" {
-                let limit = std::env::var("CODEGRAPH_SEMANTIC_CANDIDATES")
-                    .ok()
-                    .and_then(|value| value.parse().ok())
-                    .unwrap_or(0);
-                let mut candidates_by_target = HashMap::new();
-                let mut candidate_symbols = HashMap::new();
-                for (edge, target) in edges.iter().zip(&targets) {
-                    if target.is_some()
-                        || catalog.ambiguous(&edge.to)
-                        || Self::semantic_stop_symbol(&edge.to)
-                    {
-                        continue;
-                    }
-                    let candidates = candidates_by_target
-                        .entry(edge.to.clone())
-                        .or_insert_with(|| catalog.semantic_candidates(&edge.to, limit));
-                    for alias in candidates {
-                        candidate_symbols.insert(alias.clone(), symbol_map[alias]);
-                    }
-                }
-                let unresolved: Vec<_> = candidates_by_target
-                    .iter()
-                    .filter(|(_, candidates)| !candidates.is_empty())
-                    .map(|(target, _)| target.clone())
-                    .collect();
-                if !unresolved.is_empty() {
-                    let known = self
-                        .embed_symbol_texts(
-                            candidate_symbols.keys().cloned().collect(),
-                            &candidate_symbols,
-                        )
-                        .await?;
-                    let unknown = self.embed_symbol_texts(unresolved, &HashMap::new()).await?;
-                    let mut semantic_targets = HashMap::new();
-                    for (target, candidates) in candidates_by_target {
-                        let Some(query) = unknown.get(&target) else {
-                            continue;
-                        };
-                        let mut best = 0.75f32;
-                        let mut winner = None;
-                        let mut tied = false;
-                        for alias in candidates {
-                            let Some(vector) = known.get(&alias) else {
-                                continue;
-                            };
-                            let score = Self::cosine_similarity_static(query, vector);
-                            let id = candidate_symbols[&alias];
-                            if score > best + 1e-6 {
-                                best = score;
-                                winner = Some(id);
-                                tied = false;
-                            } else if (score - best).abs() <= 1e-6
-                                && winner.is_some_and(|winner| winner != id)
-                            {
-                                tied = true;
-                            }
-                        }
-                        if !tied {
-                            if let Some(id) = winner {
-                                semantic_targets.insert(target, id);
-                            }
-                        }
-                    }
-                    for (edge, target) in edges.iter().zip(&mut targets) {
-                        if target.is_none() {
-                            *target = semantic_targets.get(&edge.to).copied();
-                        }
-                    }
-                    self.flush_surreal_writer().await?;
-                }
-            }
-        }
-        let resolved_count = targets.iter().filter(|target| target.is_some()).count();
-        let mut resolved_edges = Vec::with_capacity(resolved_count);
-        for (edge, target) in edges.iter().zip(targets) {
-            if let Some(target) = target {
-                let mut record = CodeEdge::new(edge.from, target, edge.edge_type.clone());
-                record.metadata = edge.metadata.clone();
-                if let Some(span) = &edge.span {
-                    record.metadata.insert(
-                        "source_span".into(),
-                        format!("{}:{}", span.start_byte, span.end_byte),
+                let chunker = || {
+                    self.embedder
+                        .as_ref()
+                        .expect("sync provider initialized")
+                        .chunk_nodes_with_source_lookup(&nodes, |file| {
+                            source_snapshots
+                                .get(file)
+                                .and_then(|snapshot| snapshot.contents().ok())
+                        })
+                };
+                let plan = self.chunk_pool.install(chunker);
+                let elapsed = start.elapsed();
+                self.finish_bar(
+                    chunk_pb,
+                    format!(
+                        "🧩 Chunk plan built: {} nodes → {} chunks in {:.1?}",
+                        plan.stats.total_nodes, plan.stats.total_chunks, elapsed
+                    ),
+                )?;
+                if plan.stats.total_chunks == 0 && !nodes.is_empty() {
+                    warn!(
+                        "Chunking produced zero chunks. Check CODEGRAPH_EMBEDDING_SKIP_CHUNKING, embedding provider availability, and model max_tokens settings."
                     );
                 }
-                record.set_deterministic_id(&self.project_id);
-                resolved_edges.push(record);
+                plan
+            } else {
+                ChunkPlan::empty()
+            };
+            #[cfg(not(feature = "embeddings"))]
+            {
+                info!("⚠️ Embeddings feature disabled at compile time; chunking skipped");
+                let _chunk_plan: Option<()> = None;
             }
-        }
-        resolved_edges.sort_by_key(|edge| edge.id);
-        resolved_edges.dedup_by_key(|edge| edge.id);
-        let stored_edges = resolved_edges.len();
-        next_catalog
-            .edges
-            .extend(resolved_edges.iter().map(|edge| edge.id.to_string()));
-        resolved_edges.retain(|edge| {
-            previous
-                .as_ref()
-                .is_none_or(|state| !state.edges.contains(&edge.id.to_string()))
-        });
-        self.enqueue_edges(resolved_edges).await?;
-        self.flush_surreal_writer().await?;
-        let resolution_rate = if edges.is_empty() {
-            100.0
-        } else {
-            100.0 * resolved_count as f64 / edges.len() as f64
-        };
-        info!(
-            "Resolved {} of {} relationships (exact/contextual={}, lexical={}, semantic={}) in {:?}",
-            resolved_count,
-            edges.len(),
-            exact_count,
-            lexical_count,
-            resolved_count.saturating_sub(exact_count + lexical_count),
-            resolution_start.elapsed()
-        );
 
-        // ELIMINATED: No separate edge processing phase needed - edges extracted during parsing!
-        self.log_surreal_edge_count(stored_edges).await;
+            #[cfg(feature = "embeddings")]
+            {
+                let mut node_chunk_counts: std::collections::HashMap<usize, usize> =
+                    std::collections::HashMap::new();
+                for meta in &chunk_plan.metas {
+                    *node_chunk_counts.entry(meta.node_index).or_insert(0) += 1;
+                }
 
-        // Task 3.3: Update file metadata for incremental indexing
-        info!("💾 Updating file metadata for change tracking");
-        let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
-        self.persist_file_metadata(&file_paths_only, &nodes, &edges, &source_snapshots)
-            .await?;
-        self.flush_surreal_writer().await?;
-        self.verify_file_metadata_count(file_paths_only.len())
-            .await?;
+                for (idx, node) in nodes.iter_mut().enumerate() {
+                    let count = node_chunk_counts.get(&idx).cloned().unwrap_or(0);
+                    node.metadata
+                        .attributes
+                        .insert("chunk_count".to_string(), count.to_string());
+                }
+            }
 
-        // COMPREHENSIVE INDEXING COMPLETION SUMMARY
-        let avg_nodes_per_file = if stats.files > 0 {
-            total_nodes_extracted as f64 / stats.files as f64
-        } else {
-            0.0
-        };
-        let avg_edges_per_file = if stats.files > 0 {
-            total_edges_extracted as f64 / stats.files as f64
-        } else {
-            0.0
-        };
-        let avg_embeddings_per_node = if total_nodes_extracted > 0 {
-            stats.embeddings as f64 / total_nodes_extracted as f64
-        } else {
-            0.0
-        };
+            phase_ms.insert(
+                "chunk_plan".into(),
+                chunks_start.elapsed().as_millis() as u64,
+            );
+            let persist_start = std::time::Instant::now();
+            let success_rate = if pstats.total_files > 0 {
+                (pstats.parsed_files as f64 / pstats.total_files as f64) * 100.0
+            } else {
+                100.0
+            };
 
-        let total_elapsed = start.elapsed().as_secs_f64();
+            let parse_completion_msg = format!(
+                "🌳 Unified fast_ml + AST extraction complete: {}/{} files (✅ {:.1}% success) | 📊 {} nodes + {} edges | ⚡ {:.0} lines/s",
+                pstats.parsed_files,
+                pstats.total_files,
+                success_rate,
+                total_nodes_extracted,
+                total_edges_extracted,
+                pstats.lines_per_second
+            );
 
-        info!("🎉 INDEXING COMPLETE");
-        info!(
-            "📂 Files {} ({} skipped) | Lines {} | Time {:.1}s",
-            pstats.parsed_files, stats.skipped, stats.lines, total_elapsed
-        );
-        info!(
-            "🌳 Graph coverage: nodes {} | edges {} | nodes/file {:.1} | edges/file {:.1} | resolved {:.1}%",
-            total_nodes_extracted,
-            stored_edges,
-            avg_nodes_per_file,
-            avg_edges_per_file,
-            resolution_rate
-        );
-        info!(
-            "🧠 Embeddings: chunks {} | dim {} | provider {} | per-node {:.1}",
-            stats.embeddings, self.vector_dim, provider, avg_embeddings_per_node
-        );
-        info!(
-            "⚡ Throughput: {:.1} files/s | {:.1} nodes/s | {:.1} edges/s",
-            pstats.parsed_files as f64 / total_elapsed.max(1e-3),
-            total_nodes_extracted as f64 / total_elapsed.max(1e-3),
-            stored_edges as f64 / total_elapsed.max(1e-3)
-        );
+            // Enhanced parsing statistics
+            info!("🌳 TreeSitter AST parsing results:");
+            info!(
+                "   📊 Semantic nodes extracted: {} (functions, structs, classes, etc.)",
+                total_nodes_extracted
+            );
+            info!(
+                "   🔗 Code relationships extracted: {} (calls, imports, dependencies)",
+                total_edges_extracted
+            );
+            info!(
+                "   📈 Extraction efficiency: {:.1} nodes/file | {:.1} edges/file",
+                total_nodes_extracted as f64 / pstats.parsed_files.max(1) as f64,
+                total_edges_extracted as f64 / pstats.parsed_files.max(1) as f64
+            );
+            info!(
+                "   🎯 Sample nodes: {:?}",
+                nodes.iter().take(3).map(|n| &n.name).collect::<Vec<_>>()
+            );
+            self.log_surrealdb_status("post-parse");
 
-        // Populate extended stats for CLI reporting
-        stats.nodes = total_nodes_extracted;
-        stats.edges = stored_edges;
-        stats.chunks = stats.embeddings; // chunks == embeddings in current impl
-        stats.embedding_dimension = self.vector_dim;
-        stats.embedding_provider = provider.clone();
-        stats.resolved_edges = resolved_count;
-        stats.unresolved_edges = total_edges_extracted.saturating_sub(resolved_count);
-        stats.resolution_rate = resolution_rate;
+            if nodes.is_empty() {
+                warn!("No nodes generated from parsing! Check parser implementation.");
+                warn!(
+                    "Parsing stats: {} files, {} lines processed",
+                    pstats.parsed_files, pstats.total_lines
+                );
+            }
 
-        self.flush_surreal_writer().await?;
-        self.surreal
-            .lock()
-            .await
-            .reconcile_catalog(
-                &self.project_id,
-                next_catalog.nodes.keys().cloned().collect(),
-                next_catalog.edges.iter().cloned().collect(),
-                next_catalog.chunks.iter().cloned().collect(),
-                file_paths_only
+            // STAGE 4: Persist nodes before embedding so SurrealDB reflects progress
+            // Parsing, analyzer validation and chunk preparation must succeed before replacing
+            // the last usable graph. A failed parse must never erase the previous index.
+            self.flush_surreal_writer().await?;
+            // Remove the ready marker before the first mutation; interrupted runs cannot skip.
+            self.surreal
+                .lock()
+                .await
+                .db()
+                .query("DELETE project_metadata WHERE project_id = $project")
+                .bind(("project", self.project_id.clone()))
+                .await?
+                .check()?;
+            for node in &nodes {
+                next_catalog.nodes.insert(
+                    node.id.to_string(),
+                    crate::reconciliation::node_digest(node)?,
+                );
+            }
+            let store_nodes_pb = self.create_progress_bar(nodes.len() as u64, "📈 Storing nodes");
+            let mut stats = IndexStats {
+                files: pstats.parsed_files,
+                lines: pstats.total_lines,
+                skipped: pstats.cached_files,
+                cached_files: pstats.cached_files,
+                analyzers_enabled: analyzer_settings.any_enabled(),
+                build_context_nodes,
+                build_context_edges,
+                lsp_nodes_enriched: lsp_enrichment_stats.nodes_enriched,
+                lsp_edges_resolved: lsp_enrichment_stats.edges_resolved,
+                docs_attached: enrichment_stats.docs_attached,
+                export_edges_added: enrichment_stats.export_edges_added,
+                reexport_edges_added: enrichment_stats.reexport_edges_added,
+                feature_enables_edges_added: enrichment_stats.feature_enables_edges_added,
+                uses_edges_derived: enrichment_stats.uses_edges_derived,
+                module_nodes_added: module_linker_stats.module_nodes_added,
+                module_contains_edges_added: module_linker_stats.contains_edges_added,
+                module_import_edges_added: module_linker_stats.module_import_edges_added,
+                dataflow_variable_nodes_added: dataflow_stats.variable_nodes_added,
+                dataflow_defines_edges_added: dataflow_stats.defines_edges_added,
+                dataflow_uses_edges_added: dataflow_stats.uses_edges_added,
+                dataflow_flows_to_edges_added: dataflow_stats.flows_to_edges_added,
+                dataflow_returns_edges_added: dataflow_stats.returns_edges_added,
+                dataflow_mutates_edges_added: dataflow_stats.mutates_edges_added,
+                doc_nodes_added: docs_contracts_stats.document_nodes_added,
+                document_edges_added: docs_contracts_stats.document_edges_added,
+                specification_edges_added: docs_contracts_stats.specification_edges_added,
+                package_cycles_detected: architecture_stats.package_cycles_detected,
+                boundary_violations_added: architecture_stats.boundary_violations_added,
+                ..Default::default()
+            };
+
+            for node in nodes.iter() {
+                match node.node_type {
+                    Some(NodeType::Function) => stats.functions += 1,
+                    Some(NodeType::Class) => stats.classes += 1,
+                    Some(NodeType::Struct) => stats.structs += 1,
+                    Some(NodeType::Trait) => stats.traits += 1,
+                    _ => {}
+                }
+            }
+            let storage_batch = self.config.batch_size.max(1);
+            for chunk in nodes.chunks(storage_batch) {
+                let dirty: Vec<_> = chunk
                     .iter()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .collect(),
+                    .filter(|node| {
+                        previous
+                            .as_ref()
+                            .and_then(|state| state.nodes.get(&node.id.to_string()))
+                            != next_catalog.nodes.get(&node.id.to_string())
+                    })
+                    .cloned()
+                    .collect();
+                if !dirty.is_empty() {
+                    self.persist_nodes_batch(&dirty).await?;
+                }
+                store_nodes_pb.inc(chunk.len() as u64);
+            }
+            self.flush_surreal_writer().await?;
+            self.finish_bar(store_nodes_pb, "📈 Nodes stored")?;
+            self.log_surreal_node_count(total_nodes_extracted).await;
+
+            #[cfg(feature = "embeddings")]
+            let total_chunks = chunk_plan.chunks.len() as u64;
+            #[cfg(not(feature = "embeddings"))]
+            let total_chunks = 0u64;
+            let embed_pb = self.create_batch_progress_bar(
+                total_chunks,
+                self.config.batch_size,
+                "🧠 Embedding chunks (vector batch)",
+            );
+            let chunk_store_pb = self.create_batch_progress_bar(
+                total_chunks,
+                self.config.batch_size,
+                "🧩 Persisting chunk embeddings",
+            );
+            let batch = self.config.batch_size.max(1);
+            info!(
+                "   ⚙️ Effective embedding batch size: {} (CODEGRAPH_EMBEDDINGS_BATCH_SIZE clamped to 512 for DB writes)",
+                batch
+            );
+            #[allow(unused_mut)]
+            #[cfg(feature = "embeddings")]
+            let mut processed: u64 = 0;
+            #[cfg(not(feature = "embeddings"))]
+            let processed: u64 = 0;
+
+            // Enhanced embedding phase logging
+            let provider = &self.global_config.embedding.provider;
+            info!("💾 Starting semantic embedding generation:");
+            info!(
+                "   🤖 Provider: {} ({}-dimensional embeddings)",
+                provider, self.vector_dim
+            );
+            info!(
+                "   🗄️ SurrealDB column: {}",
+                self.embedding_column.column_name()
+            );
+
+            let total_nodes = nodes.len() as u64;
+            info!("   📊 Nodes to embed: {} semantic entities", total_nodes);
+            info!(
+                "   ⚡ Batch size: {} (optimized for {} system)",
+                batch,
+                self.estimate_system_memory()
+            );
+            info!("   🎯 Target: Enable similarity search and AI-powered analysis");
+            phase_ms.insert(
+                "enqueue_nodes".into(),
+                persist_start.elapsed().as_millis() as u64,
+            );
+            let embedding_start = std::time::Instant::now();
+            // Embed chunks and persist chunk embeddings
+            #[cfg(feature = "embeddings")]
+            if self.policies.embeddings == crate::policy::StagePolicy::Sync {
+                use futures::stream::{self, StreamExt};
+                use std::sync::atomic::{AtomicU64, Ordering};
+
+                // To avoid giant DB payloads, tie chunk grouping to the DB batch size (which may be lower
+                // than the embedding batch size). This keeps both embedding and DB writes in smaller slices.
+                // Also ensure we never exceed the embedding batch size, so the embedder isn’t overfed.
+                let chunk_batch_size = batch.max(1);
+
+                let mut pending_chunks = Vec::new();
+                for (index, (chunk, meta)) in
+                    chunk_plan.chunks.iter().zip(&chunk_plan.metas).enumerate()
+                {
+                    let node = &nodes[meta.node_index];
+                    let id = ChunkEmbeddingRecord::identity(&node.id.to_string(), meta.chunk_index);
+                    let hash = fingerprint(&(
+                        &chunk.text,
+                        &embedding_config,
+                        &policy,
+                        &self.embedding_model,
+                        self.vector_dim,
+                    ))?;
+                    if previous
+                        .as_ref()
+                        .and_then(|state| state.chunk_hashes.get(&id))
+                        != Some(&hash)
+                    {
+                        pending_chunks.push(index);
+                    }
+                    next_catalog.chunks.insert(id.clone());
+                    next_catalog.chunk_hashes.insert(id, hash);
+                }
+                let reused_chunks = chunk_plan.chunks.len() - pending_chunks.len();
+                let chunk_batches =
+                    (0..pending_chunks.len())
+                        .step_by(chunk_batch_size)
+                        .map(|start| {
+                            let indices = &pending_chunks
+                                [start..(start + chunk_batch_size).min(pending_chunks.len())];
+                            (
+                                indices
+                                    .iter()
+                                    .map(|index| chunk_plan.chunks[*index].text.clone())
+                                    .collect::<Vec<_>>(),
+                                indices
+                                    .iter()
+                                    .map(|index| chunk_plan.metas[*index].clone())
+                                    .collect::<Vec<_>>(),
+                            )
+                        });
+
+                let processed_atomic = Arc::new(AtomicU64::new(0));
+                let max_concurrent = self.config.max_concurrent.max(1);
+                // DB batch size: prefer explicit env override, otherwise match embedding batch size
+                let chunk_db_batch = chunk_embedding_db_batch_size(batch);
+                let embedder = self.embedder.as_ref().expect("sync provider initialized");
+
+                let mut batch_stream =
+                    stream::iter(chunk_batches.map(|(texts, metas)| async move {
+                        let embs = embedder.embed_texts_batched(&texts).await;
+                        (texts, metas, embs)
+                    }))
+                    .buffer_unordered(max_concurrent);
+
+                while let Some((texts, metas, embs_result)) = batch_stream.next().await {
+                    let embs: Vec<Vec<f32>> = embs_result?;
+                    if embs.len() != metas.len() {
+                        return Err(anyhow!(
+                            "Chunk embedding cardinality mismatch: {} vectors for {} inputs",
+                            embs.len(),
+                            metas.len()
+                        ));
+                    }
+
+                    let mut records: Vec<ChunkEmbeddingRecord> = Vec::with_capacity(metas.len());
+                    for ((meta, text), emb) in metas.iter().zip(texts.iter()).zip(embs.iter()) {
+                        if let Some(node) = nodes.get(meta.node_index) {
+                            if emb.len() != self.vector_dim
+                                || emb.iter().any(|value| !value.is_finite())
+                            {
+                                return Err(anyhow!(
+                                    "Invalid chunk vector for {}: dimension {}, expected {}",
+                                    node.id,
+                                    emb.len(),
+                                    self.vector_dim
+                                ));
+                            }
+                            records.push(ChunkEmbeddingRecord::new(
+                                &node.id.to_string(),
+                                meta.chunk_index,
+                                text.clone(),
+                                emb,
+                                &self.embedding_model,
+                                self.embedding_column.column_name(),
+                                &self.project_id,
+                            ));
+                        }
+                    }
+
+                    next_catalog
+                        .chunks
+                        .extend(records.iter().map(|record| record.id.clone()));
+                    for batch in records.chunks(chunk_db_batch) {
+                        self.enqueue_chunk_embeddings(batch.to_vec()).await?;
+                    }
+
+                    let done = processed_atomic.fetch_add(metas.len() as u64, Ordering::Relaxed)
+                        + metas.len() as u64;
+                    embed_pb.set_position(done.min(total_chunks));
+                    chunk_store_pb.set_position(done.min(total_chunks));
+                }
+
+                processed = processed_atomic.load(Ordering::Relaxed) + reused_chunks as u64;
+            }
+            #[cfg(not(feature = "embeddings"))]
+            let processed: u64 = 0;
+            let embedding_rate = if total_chunks > 0 {
+                processed as f64 / total_chunks as f64 * 100.0
+            } else {
+                100.0
+            };
+
+            let provider = &self.global_config.embedding.provider;
+            let embed_completion_msg = format!(
+                "💾 Semantic embeddings complete: {}/{} chunks (✅ {:.1}% success) | 🤖 {} | 📐 {}-dim | 🚀 Batch: {}",
+                processed,
+                total_chunks,
+                embedding_rate,
+                provider,
+                self.vector_dim,
+                self.config.batch_size
+            );
+            self.finish_bar(embed_pb, embed_completion_msg.clone())?;
+            self.finish_bar(
+                chunk_store_pb,
+                format!(
+                    "🧩 Chunk embeddings queued for persistence: {}/{} batches",
+                    total_chunks, total_chunks
+                ),
+            )?;
+
+            #[cfg(feature = "embeddings")]
+            {
+                // Ensure all chunk embeddings are flushed to SurrealDB before continuing
+                self.flush_surreal_writer().await?;
+                self.log_surreal_chunk_count(total_chunks as usize).await;
+            }
+
+            // Node embedding: keep pooled embedding as average of its chunks
+            #[cfg(feature = "embeddings")]
+            {
+                // For now, skip storing node-level embedding when chunking is enabled.
+                // Retrieval should use chunk embeddings directly.
+            }
+
+            stats.embeddings = processed as usize;
+
+            // Enhanced embedding completion statistics
+            info!("💾 Semantic embedding generation results:");
+            info!(
+                "   🎯 Vector search enabled: {} nodes embedded for similarity matching",
+                processed
+            );
+            info!("   📐 Embedding dimensions: {}", self.vector_dim);
+            info!(
+                "   🤖 Provider performance: {} with batch optimization",
+                provider
+            );
+            info!(
+                "   🔍 Capabilities unlocked: Vector search, semantic analysis, AI-powered tools"
+            );
+
+            // CRITICAL FIX: Preserve working ONNX embedding session for AI semantic matching
+            // Original reset caused fresh embedder creation to fail with ONNX resource conflicts,
+            // falling back to random hash embeddings (0% AI effectiveness).
+            // Keeping the working ONNX session ensures real embeddings for AI semantic matching.
+            // Tradeoff: Slightly more memory usage during post-processing (acceptable on M4 Max).
+            #[cfg(feature = "embeddings")]
+            {
+                // self.embedder = codegraph_vector::EmbeddingGenerator::default();
+                tracing::info!(
+                    "🔧 Preserving working ONNX embedder session for AI semantic matching"
+                );
+            }
+
+            tracing::info!(
+                target: "codegraph_mcp::indexer",
+                "Vector indexing handled by SurrealDB; local FAISS generation removed"
+            );
+
+            // Resolve exact/contextual targets once before any semantic inference.
+            phase_ms.insert(
+                "embeddings_and_writes".into(),
+                embedding_start.elapsed().as_millis() as u64,
+            );
+            let resolution_start = std::time::Instant::now();
+            let catalog = crate::resolution::SymbolCatalog::new(&nodes);
+            let symbol_map = catalog.unique_aliases();
+            let mut normalized = HashMap::new();
+            let mut targets = Vec::with_capacity(edges.len());
+            let mut exact_count = 0;
+            let mut lexical_count = 0;
+            let mut lexical_cache = HashMap::new();
+            for edge in &edges {
+                let mut target = catalog.exact(edge, &[]);
+                if target.is_none() {
+                    let variants = normalized.entry(edge.to.clone()).or_insert_with(|| {
+                        let mut variants = Self::normalize_symbol_target(&edge.to);
+                        if edge.to.starts_with("_R")
+                            || edge.to.starts_with("_ZN")
+                            || edge.to.contains('<')
+                        {
+                            variants.extend(Self::normalize_rust_symbol(&edge.to));
+                            variants.sort();
+                            variants.dedup();
+                        }
+                        variants
+                    });
+                    target = catalog.exact(edge, variants);
+                }
+                if target.is_some() {
+                    exact_count += 1;
+                }
+                if target.is_none() && !catalog.ambiguous(&edge.to) {
+                    target = *lexical_cache
+                        .entry((edge.from, edge.to.clone()))
+                        .or_insert_with(|| catalog.fuzzy(edge));
+                    if target.is_some() {
+                        lexical_count += 1;
+                    }
+                }
+                targets.push(target);
+            }
+            #[cfg(feature = "ai-enhanced")]
+            {
+                if self.policies.semantic == crate::policy::StagePolicy::Sync {
+                    let limit = std::env::var("CODEGRAPH_SEMANTIC_CANDIDATES")
+                        .ok()
+                        .and_then(|value| value.parse().ok())
+                        .unwrap_or(0);
+                    let mut candidates_by_target = HashMap::new();
+                    let mut candidate_symbols = HashMap::new();
+                    for (edge, target) in edges.iter().zip(&targets) {
+                        if target.is_some()
+                            || catalog.ambiguous(&edge.to)
+                            || Self::semantic_stop_symbol(&edge.to)
+                        {
+                            continue;
+                        }
+                        let candidates = candidates_by_target
+                            .entry(edge.to.clone())
+                            .or_insert_with(|| catalog.semantic_candidates(&edge.to, limit));
+                        for alias in candidates {
+                            candidate_symbols.insert(alias.clone(), symbol_map[alias]);
+                        }
+                    }
+                    let unresolved: Vec<_> = candidates_by_target
+                        .iter()
+                        .filter(|(_, candidates)| !candidates.is_empty())
+                        .map(|(target, _)| target.clone())
+                        .collect();
+                    if !unresolved.is_empty() {
+                        let known = self
+                            .embed_symbol_texts(
+                                candidate_symbols.keys().cloned().collect(),
+                                &candidate_symbols,
+                            )
+                            .await?;
+                        let unknown = self.embed_symbol_texts(unresolved, &HashMap::new()).await?;
+                        let mut semantic_targets = HashMap::new();
+                        for (target, candidates) in candidates_by_target {
+                            let Some(query) = unknown.get(&target) else {
+                                continue;
+                            };
+                            let mut best = 0.75f32;
+                            let mut winner = None;
+                            let mut tied = false;
+                            for alias in candidates {
+                                let Some(vector) = known.get(&alias) else {
+                                    continue;
+                                };
+                                let score = Self::cosine_similarity_static(query, vector);
+                                let id = candidate_symbols[&alias];
+                                if score > best + 1e-6 {
+                                    best = score;
+                                    winner = Some(id);
+                                    tied = false;
+                                } else if (score - best).abs() <= 1e-6
+                                    && winner.is_some_and(|winner| winner != id)
+                                {
+                                    tied = true;
+                                }
+                            }
+                            if !tied {
+                                if let Some(id) = winner {
+                                    semantic_targets.insert(target, id);
+                                }
+                            }
+                        }
+                        for (edge, target) in edges.iter().zip(&mut targets) {
+                            if target.is_none() {
+                                *target = semantic_targets.get(&edge.to).copied();
+                            }
+                        }
+                        self.flush_surreal_writer().await?;
+                    }
+                }
+            }
+            let resolved_count = targets.iter().filter(|target| target.is_some()).count();
+            let mut resolved_edges = Vec::with_capacity(resolved_count);
+            for (edge, target) in edges.iter().zip(targets) {
+                if let Some(target) = target {
+                    let mut record = CodeEdge::new(edge.from, target, edge.edge_type.clone());
+                    record.metadata = edge.metadata.clone();
+                    if let Some(span) = &edge.span {
+                        record.metadata.insert(
+                            "source_span".into(),
+                            format!("{}:{}", span.start_byte, span.end_byte),
+                        );
+                    }
+                    record.set_deterministic_id(&self.project_id);
+                    resolved_edges.push(record);
+                }
+            }
+            resolved_edges.sort_by_key(|edge| edge.id);
+            resolved_edges.dedup_by_key(|edge| edge.id);
+            let stored_edges = resolved_edges.len();
+            next_catalog
+                .edges
+                .extend(resolved_edges.iter().map(|edge| edge.id.to_string()));
+            resolved_edges.retain(|edge| {
+                previous
+                    .as_ref()
+                    .is_none_or(|state| !state.edges.contains(&edge.id.to_string()))
+            });
+            self.enqueue_edges(resolved_edges).await?;
+            self.flush_surreal_writer().await?;
+            let resolution_rate = if edges.is_empty() {
+                100.0
+            } else {
+                100.0 * resolved_count as f64 / edges.len() as f64
+            };
+            info!(
+                "Resolved {} of {} relationships (exact/contextual={}, lexical={}, semantic={}) in {:?}",
+                resolved_count,
+                edges.len(),
+                exact_count,
+                lexical_count,
+                resolved_count.saturating_sub(exact_count + lexical_count),
+                resolution_start.elapsed()
+            );
+
+            phase_ms.insert(
+                "resolve_and_enqueue_edges".into(),
+                resolution_start.elapsed().as_millis() as u64,
+            );
+            let finish_start = std::time::Instant::now();
+            // ELIMINATED: No separate edge processing phase needed - edges extracted during parsing!
+            self.log_surreal_edge_count(stored_edges).await;
+
+            // Task 3.3: Update file metadata for incremental indexing
+            info!("💾 Updating file metadata for change tracking");
+            let file_paths_only: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
+            self.persist_file_metadata(&file_paths_only, &nodes, &edges, &source_snapshots)
+                .await?;
+            self.flush_surreal_writer().await?;
+            self.verify_file_metadata_count(file_paths_only.len())
+                .await?;
+
+            // COMPREHENSIVE INDEXING COMPLETION SUMMARY
+            let avg_nodes_per_file = if stats.files > 0 {
+                total_nodes_extracted as f64 / stats.files as f64
+            } else {
+                0.0
+            };
+            let avg_edges_per_file = if stats.files > 0 {
+                total_edges_extracted as f64 / stats.files as f64
+            } else {
+                0.0
+            };
+            let avg_embeddings_per_node = if total_nodes_extracted > 0 {
+                stats.embeddings as f64 / total_nodes_extracted as f64
+            } else {
+                0.0
+            };
+
+            let total_elapsed = start.elapsed().as_secs_f64();
+
+            info!("🎉 INDEXING COMPLETE");
+            info!(
+                "📂 Files {} ({} skipped) | Lines {} | Time {:.1}s",
+                pstats.parsed_files, stats.skipped, stats.lines, total_elapsed
+            );
+            info!(
+                "🌳 Graph coverage: nodes {} | edges {} | nodes/file {:.1} | edges/file {:.1} | resolved {:.1}%",
+                total_nodes_extracted,
+                stored_edges,
+                avg_nodes_per_file,
+                avg_edges_per_file,
+                resolution_rate
+            );
+            info!(
+                "🧠 Embeddings: chunks {} | dim {} | provider {} | per-node {:.1}",
+                stats.embeddings, self.vector_dim, provider, avg_embeddings_per_node
+            );
+            info!(
+                "⚡ Throughput: {:.1} files/s | {:.1} nodes/s | {:.1} edges/s",
+                pstats.parsed_files as f64 / total_elapsed.max(1e-3),
+                total_nodes_extracted as f64 / total_elapsed.max(1e-3),
+                stored_edges as f64 / total_elapsed.max(1e-3)
+            );
+
+            // Populate extended stats for CLI reporting
+            stats.nodes = total_nodes_extracted;
+            stats.edges = stored_edges;
+            stats.chunks = stats.embeddings; // chunks == embeddings in current impl
+            stats.embedding_dimension = self.vector_dim;
+            stats.embedding_provider = provider.clone();
+            stats.resolved_edges = resolved_count;
+            stats.unresolved_edges = total_edges_extracted.saturating_sub(resolved_count);
+            stats.resolution_rate = resolution_rate;
+
+            self.flush_surreal_writer().await?;
+            self.surreal
+                .lock()
+                .await
+                .reconcile_catalog(
+                    &self.project_id,
+                    next_catalog.nodes.keys().cloned().collect(),
+                    next_catalog.edges.iter().cloned().collect(),
+                    next_catalog.chunks.iter().cloned().collect(),
+                    file_paths_only
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect(),
+                )
+                .await?;
+            source_snapshots.validate_current().await?;
+            let current_files = codegraph_parser::file_collect::collect_source_files_with_config(
+                path,
+                &file_config,
+            )?;
+            if current_files != all_files
+                || crate::reconciliation::support_fingerprints(&self.project_root)? != support
+                || crate::analyzers::build_context::external_input_fingerprints(&self.project_root)?
+                    != external_support
+            {
+                return Err(anyhow!(
+                    "Project inputs changed during indexing; retry reconciliation"
+                ));
+            }
+            stats.vector_index_ready = codegraph_graph::vector_indexes::ensure_ready(
+                &self.surreal.lock().await.db(),
+                self.vector_dim,
+                &Self::vector_tables(self.policies),
             )
             .await?;
-        stats.index_ms = start.elapsed().as_millis() as u64;
-        stats.complete = true;
-        #[cfg(feature = "embeddings")]
-        {
-            let after = self.embedder.inference_stats();
-            stats.embedding_cache_hits = after.0.saturating_sub(inference_before.0);
-            stats.inference_texts = after.1.saturating_sub(inference_before.1);
-            stats.inference_tokens = after.2.saturating_sub(inference_before.2);
-        }
-        self.persist_project_metadata(&stats, stats.nodes, stats.edges, &input_fingerprint)
-            .await?;
-        self.flush_surreal_writer().await?;
-        next_catalog.stats = stats.clone();
-        if let Err(error) = state_cache.put(&self.project_id, &next_catalog) {
-            warn!("Project catalog cache unavailable; next run will reconcile fully: {error}");
-        }
-        Ok(stats)
+            stats.index_ms = start.elapsed().as_millis() as u64;
+            phase_ms.insert(
+                "durable_reconcile_and_indexes".into(),
+                finish_start.elapsed().as_millis() as u64,
+            );
+            stats.phase_ms = phase_ms;
+            let writer_after = self
+                .surreal_writer
+                .as_ref()
+                .map(|writer| writer.metrics())
+                .unwrap_or_default();
+            stats.writer_jobs_acked = writer_after.0.saturating_sub(writer_before.0);
+            stats.writer_rows_acked = writer_after.1.saturating_sub(writer_before.1);
+            stats.writer_payload_bytes_acked = writer_after.2.saturating_sub(writer_before.2);
+            stats.source_read_operations = source_snapshots.read_operations;
+            stats.source_read_bytes = source_snapshots.read_bytes;
+            stats.source_spilled_bytes = source_snapshots.spilled_bytes;
+            stats.startup_ms = self.startup_ms;
+            stats.graph_complete = true;
+            stats.embedding_status = self.policies.embeddings.status().into();
+            stats.semantic_status = self.policies.semantic.status().into();
+            stats.complete = !self.policies.pending();
+            if self.policies.pending() {
+                crate::policy::pending_cache(&self.project_root).put(
+                    &self.project_id,
+                    &crate::policy::DeferredJob {
+                        input_fingerprint: input_fingerprint.clone(),
+                        policies: self.policies,
+                    },
+                )?;
+            }
+            #[cfg(feature = "embeddings")]
+            {
+                let after = self
+                    .embedder
+                    .as_ref()
+                    .map(|embedder| embedder.inference_stats())
+                    .unwrap_or_default();
+                stats.embedding_cache_hits = after.0.saturating_sub(inference_before.0);
+                stats.inference_texts = after.1.saturating_sub(inference_before.1);
+                stats.inference_tokens = after.2.saturating_sub(inference_before.2);
+            }
+            self.persist_project_metadata(&stats, stats.nodes, stats.edges, &input_fingerprint)
+                .await?;
+            self.flush_surreal_writer().await?;
+            if !self.policies.pending() {
+                crate::policy::pending_cache(&self.project_root).remove(&self.project_id)?;
+            }
+            next_catalog.stats = stats.clone();
+            if let Err(error) = state_cache.put(&self.project_id, &next_catalog) {
+                warn!("Project catalog cache unavailable; next run will reconcile fully: {error}");
+            }
+            Ok(stats)
+        })
     }
 
     /// REVOLUTIONARY: Parse files with unified node+edge extraction for maximum speed
@@ -1891,19 +2171,29 @@ impl ProjectIndexer {
         texts.dedup();
         let (batch_size, concurrency) = self.symbol_embedding_batch_settings();
         let mut results = HashMap::new();
-        let mut batches = stream::iter(texts.chunks(batch_size).map(|batch| async move {
-            let vectors = self.embedder.embed_texts_batched(batch).await?;
-            if vectors.len() != batch.len()
-                || vectors.iter().any(|vector| {
-                    vector.len() != self.vector_dim || vector.iter().any(|value| !value.is_finite())
-                })
-            {
-                return Err(anyhow!(
-                    "Symbol provider returned invalid cardinality, dimensions or values"
-                ));
-            }
-            Ok::<_, anyhow::Error>((batch, vectors))
-        }))
+        let texts = &texts;
+        let mut batches = stream::iter((0..texts.len()).step_by(batch_size).map(
+            |start| async move {
+                let batch = &texts[start..(start + batch_size).min(texts.len())];
+                let vectors = self
+                    .embedder
+                    .as_ref()
+                    .expect("sync provider initialized")
+                    .embed_texts_batched(batch)
+                    .await?;
+                if vectors.len() != batch.len()
+                    || vectors.iter().any(|vector| {
+                        vector.len() != self.vector_dim
+                            || vector.iter().any(|value| !value.is_finite())
+                    })
+                {
+                    return Err(anyhow!(
+                        "Symbol provider returned invalid cardinality, dimensions or values"
+                    ));
+                }
+                Ok::<_, anyhow::Error>((batch, vectors))
+            },
+        ))
         .buffer_unordered(concurrency);
         while let Some(result) = batches.next().await {
             let (batch, vectors) = result?;
@@ -3420,6 +3710,18 @@ pub fn normalize(v: &[f32]) -> Vec<f32> {
 pub struct IndexStats {
     pub cached_files: usize,
     pub index_ms: u64,
+    pub startup_ms: u64,
+    pub phase_ms: std::collections::BTreeMap<String, u64>,
+    pub writer_jobs_acked: u64,
+    pub writer_rows_acked: u64,
+    pub writer_payload_bytes_acked: u64,
+    pub source_read_operations: u64,
+    pub source_read_bytes: u64,
+    pub source_spilled_bytes: u64,
+    pub graph_complete: bool,
+    pub vector_index_ready: bool,
+    pub embedding_status: String,
+    pub semantic_status: String,
     pub complete: bool,
     pub inference_texts: u64,
     pub inference_tokens: u64,

@@ -39,7 +39,7 @@ impl VectorIndexMode {
             .join("\n")
     }
 }
-fn definitions(dimension: usize, tables: &[&str]) -> Result<Vec<(String, String, String)>> {
+fn definitions(dimension: usize, tables: &[&'static str]) -> Result<Vec<(String, String, String)>> {
     if ![384, 768, 1024, 1536, 2048, 2560, 3072, 3584, 4096].contains(&dimension) {
         return Err(CodeGraphError::Configuration(format!(
             "Unsupported vector index dimension {dimension}"
@@ -70,7 +70,11 @@ fn definitions(dimension: usize, tables: &[&str]) -> Result<Vec<(String, String,
     }).collect()
 }
 
-pub async fn ensure_ready(db: &Surreal<Any>, dimension: usize, tables: &[&str]) -> Result<bool> {
+pub async fn ensure_ready(
+    db: &Surreal<Any>,
+    dimension: usize,
+    tables: &[&'static str],
+) -> Result<bool> {
     if VectorIndexMode::from_env()? == VectorIndexMode::Off || tables.is_empty() {
         return Ok(false);
     }

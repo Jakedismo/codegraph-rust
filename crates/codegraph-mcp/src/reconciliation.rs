@@ -29,6 +29,27 @@ pub(crate) fn node_digest(node: &CodeNode) -> Result<String> {
     Ok(fingerprint(&value)?)
 }
 
+/// Stream artifact identity rather than materializing a potentially large compiler index.
+pub(crate) fn file_fingerprint(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hash
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
 pub(crate) fn support_file(path: &Path) -> bool {
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
     matches!(
@@ -65,7 +86,7 @@ pub(crate) fn support_fingerprints(root: &Path) -> Result<BTreeMap<String, Strin
         if entry.file_type().is_file() && support_file(entry.path()) {
             files.insert(
                 entry.path().to_string_lossy().into_owned(),
-                fingerprint(&std::fs::read(entry.path())?)?,
+                file_fingerprint(entry.path())?,
             );
         }
     }

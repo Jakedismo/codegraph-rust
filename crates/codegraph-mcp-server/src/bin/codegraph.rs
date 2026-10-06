@@ -189,6 +189,13 @@ enum Commands {
 
         #[arg(long, value_enum, help = "Indexing tier: fast | balanced | full")]
         index_tier: Option<IndexTier>,
+        #[arg(
+            long,
+            help = "Complete the persisted deferred inference job with current sources"
+        )]
+        complete_deferred: bool,
+        #[arg(long, help = "Write indexing metrics and completion status as JSON")]
+        stats_json: Option<PathBuf>,
     },
 
     #[command(
@@ -575,6 +582,8 @@ async fn run_cli(cli: Cli) -> Result<()> {
             symbol_batch_size,
             symbol_max_concurrent,
             index_tier,
+            complete_deferred,
+            stats_json,
         } => {
             handle_index(
                 config,
@@ -593,6 +602,8 @@ async fn run_cli(cli: Cli) -> Result<()> {
                 symbol_batch_size,
                 symbol_max_concurrent,
                 index_tier,
+                complete_deferred,
+                stats_json,
                 cli.debug,
             )
             .await?;
@@ -1116,6 +1127,8 @@ async fn handle_index(
     symbol_batch_size: Option<usize>,
     symbol_max_concurrent: Option<usize>,
     index_tier: Option<IndexTier>,
+    complete_deferred: bool,
+    stats_json: Option<PathBuf>,
     debug_log: bool,
 ) -> Result<()> {
     let project_root = path.clone().canonicalize().unwrap_or_else(|_| path.clone());
@@ -1187,6 +1200,7 @@ async fn handle_index(
     // Configure indexer
     let languages_list = languages.clone().unwrap_or_default();
     let indexer_config = IndexerConfig {
+        complete_deferred,
         languages: languages_list.clone(),
         exclude_patterns: exclude,
         include_patterns: include,
@@ -1206,18 +1220,40 @@ async fn handle_index(
     };
 
     // Create indexer
-    let mut indexer = ProjectIndexer::new(indexer_config, config, multi_progress.clone()).await?;
-
     let start_time = std::time::Instant::now();
+    let indexer = ProjectIndexer::new(indexer_config, config, multi_progress.clone()).await?;
 
     // Perform indexing
     let stats = indexer.index_project(&path).await?;
     let elapsed = start_time.elapsed();
 
-    header_pb.finish_with_message("✔ Indexing complete".to_string());
+    if let Some(destination) = stats_json {
+        std::fs::write(destination, serde_json::to_vec_pretty(&stats)?)?;
+    }
+    header_pb.finish_with_message(
+        if stats.complete {
+            "✔ Indexing complete"
+        } else {
+            "✔ Graph ready; inference pending"
+        }
+        .to_string(),
+    );
+    println!(
+        "Stages: graph={}, embeddings={}, semantic={}",
+        stats.graph_complete, stats.embedding_status, stats.semantic_status
+    );
 
     println!();
-    println!("{}", "🎉 INDEXING COMPLETE!".green().bold());
+    println!(
+        "{}",
+        if stats.complete {
+            "🎉 INDEXING COMPLETE!"
+        } else {
+            "GRAPH READY — INFERENCE PENDING"
+        }
+        .green()
+        .bold()
+    );
     println!();
 
     // Performance summary with comprehensive metrics

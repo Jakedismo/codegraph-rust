@@ -9,7 +9,10 @@ use codegraph_graph::{
 };
 use futures::{StreamExt, stream::FuturesUnordered};
 use serde::Serialize;
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -29,6 +32,7 @@ enum Job {
 struct Envelope {
     job: Job,
     _memory: Option<OwnedSemaphorePermit>,
+    bytes: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -74,7 +78,34 @@ fn encoded_size(value: &impl Serialize) -> Result<usize> {
     Ok(counter.0)
 }
 
-async fn execute(job: Job, storage: Arc<Mutex<SurrealDbStorage>>) -> Result<()> {
+#[derive(Default)]
+struct WriteMetrics {
+    jobs: AtomicU64,
+    rows: AtomicU64,
+    bytes: AtomicU64,
+}
+impl Job {
+    fn rows(&self) -> usize {
+        match self {
+            Self::Nodes(rows) => rows.len(),
+            Self::Edges(rows) => rows.len(),
+            Self::NodeEmbeddings(rows) => rows.len(),
+            Self::SymbolEmbeddings(rows) => rows.len(),
+            Self::ChunkEmbeddings(rows) => rows.len(),
+            Self::FileMetadata(rows) => rows.len(),
+            Self::ProjectMetadata(_) => 1,
+            Self::DeleteFiles { paths, .. } => paths.len(),
+            _ => 0,
+        }
+    }
+}
+async fn execute(
+    job: Job,
+    storage: Arc<Mutex<SurrealDbStorage>>,
+    metrics: &WriteMetrics,
+    bytes: u64,
+) -> Result<()> {
+    let rows = job.rows();
     let mut storage = storage.lock().await;
     match job {
         Job::Nodes(rows) => storage.upsert_nodes_batch(&rows).await?,
@@ -89,6 +120,9 @@ async fn execute(job: Job, storage: Arc<Mutex<SurrealDbStorage>>) -> Result<()> 
         Job::ProjectMetadata(row) => storage.upsert_project_metadata(row).await?,
         Job::Flush(_) | Job::Shutdown(_) => unreachable!("barriers handled by writer"),
     }
+    metrics.jobs.fetch_add(1, Ordering::Relaxed);
+    metrics.rows.fetch_add(rows as u64, Ordering::Relaxed);
+    metrics.bytes.fetch_add(bytes, Ordering::Relaxed);
     Ok(())
 }
 
@@ -110,6 +144,7 @@ pub(crate) struct SurrealWriterHandle {
     memory: Arc<Semaphore>,
     limits: Limits,
     join: JoinHandle<()>,
+    metrics: Arc<WriteMetrics>,
 }
 
 impl SurrealWriterHandle {
@@ -118,6 +153,8 @@ impl SurrealWriterHandle {
         let limits = Limits::from_env();
         let memory = Arc::new(Semaphore::new(limits.queue_bytes));
         let (tx, mut rx) = mpsc::channel::<Envelope>(8);
+        let metrics = Arc::new(WriteMetrics::default());
+        let worker_metrics = metrics.clone();
         let join = tokio::spawn(async move {
             let mut running = FuturesUnordered::<JoinHandle<Result<()>>>::new();
             let mut error = None;
@@ -146,7 +183,10 @@ impl SurrealWriterHandle {
                         job => {
                             // Completion metadata must never mark a failed write set current.
                             if error.is_none() {
-                                if let Err(err) = execute(job, pool[0].clone()).await {
+                                if let Err(err) =
+                                    execute(job, pool[0].clone(), &worker_metrics, envelope.bytes)
+                                        .await
+                                {
                                     error = Some(err.to_string());
                                 }
                             }
@@ -158,9 +198,14 @@ impl SurrealWriterHandle {
                     }
                     let storage = pool[next % pool.len()].clone();
                     next += 1;
+                    let metrics = worker_metrics.clone();
                     running.push(tokio::spawn(async move {
-                        let Envelope { job, _memory } = envelope;
-                        let result = execute(job, storage).await;
+                        let Envelope {
+                            job,
+                            _memory,
+                            bytes,
+                        } = envelope;
+                        let result = execute(job, storage, &metrics, bytes).await;
                         drop(_memory);
                         result
                     }));
@@ -176,7 +221,16 @@ impl SurrealWriterHandle {
             memory,
             limits,
             join,
+            metrics,
         }
+    }
+
+    pub(crate) fn metrics(&self) -> (u64, u64, u64) {
+        (
+            self.metrics.jobs.load(Ordering::Relaxed),
+            self.metrics.rows.load(Ordering::Relaxed),
+            self.metrics.bytes.load(Ordering::Relaxed),
+        )
     }
 
     async fn send(&self, job: Job, bytes: usize) -> Result<()> {
@@ -192,6 +246,7 @@ impl SurrealWriterHandle {
             .send(Envelope {
                 job,
                 _memory: Some(permit),
+                bytes: bytes as u64,
             })
             .await
             .map_err(|_| anyhow!("Graph writer unavailable"))

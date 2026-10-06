@@ -61,6 +61,8 @@ impl SourceSnapshot {
 pub struct SourceSnapshots {
     files: BTreeMap<PathBuf, SourceSnapshot>,
     pub retained_bytes: usize,
+    pub read_operations: u64,
+    pub read_bytes: u64,
     pub spilled_bytes: u64,
 }
 
@@ -79,19 +81,31 @@ impl SourceSnapshots {
         let mut out = Self::default();
         // Ordered buffering makes the retained/spilled partition reproducible while reads
         // overlap. At most `workers` additional file buffers are in flight.
-        let mut reads = stream::iter(paths.into_iter().map(|path| async move {
-            for _ in 0..3 {
-                let before = tokio::fs::metadata(&path).await?;
-                let source = tokio::fs::read_to_string(&path).await?;
-                let after = tokio::fs::metadata(&path).await?;
-                if before.len() == after.len() && before.modified()? == after.modified()? {
-                    return Ok::<_, std::io::Error>((path, source, after));
+        let metrics = Arc::new((
+            std::sync::atomic::AtomicU64::new(0),
+            std::sync::atomic::AtomicU64::new(0),
+        ));
+        let read_metrics = metrics.clone();
+        let mut reads = stream::iter(paths.into_iter().map(move |path| {
+            let metrics = read_metrics.clone();
+            async move {
+                for _ in 0..3 {
+                    let before = tokio::fs::metadata(&path).await?;
+                    let source = tokio::fs::read_to_string(&path).await?;
+                    metrics.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    metrics
+                        .1
+                        .fetch_add(source.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                    let after = tokio::fs::metadata(&path).await?;
+                    if before.len() == after.len() && before.modified()? == after.modified()? {
+                        return Ok::<_, std::io::Error>((path, source, after));
+                    }
                 }
+                Err(std::io::Error::other(format!(
+                    "Source changed while reading: {}",
+                    path.display()
+                )))
             }
-            Err(std::io::Error::other(format!(
-                "Source changed while reading: {}",
-                path.display()
-            )))
         }))
         .buffered(workers.max(1));
         while let Some(result) = reads.next().await {
@@ -128,11 +142,31 @@ impl SourceSnapshots {
                 },
             );
         }
+        out.read_operations = metrics.0.load(std::sync::atomic::Ordering::Relaxed);
+        out.read_bytes = metrics.1.load(std::sync::atomic::Ordering::Relaxed);
         Ok(out)
     }
 
     pub fn get(&self, path: impl AsRef<Path>) -> Option<&SourceSnapshot> {
         self.files.get(path.as_ref())
+    }
+
+    /// Reject readiness when a captured file changed or disappeared during indexing.
+    pub async fn validate_current(&self) -> Result<()> {
+        for source in self.iter() {
+            let metadata = tokio::fs::metadata(&source.path)
+                .await
+                .map_err(CodeGraphError::Io)?;
+            if metadata.len() != source.size
+                || metadata.modified().map_err(CodeGraphError::Io)? != source.modified_at
+            {
+                return Err(CodeGraphError::Parse(format!(
+                    "Source changed during indexing: {}. Retry reconciliation.",
+                    source.path.display()
+                )));
+            }
+        }
+        Ok(())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &SourceSnapshot> {
@@ -160,6 +194,9 @@ mod tests {
             snapshot.contents().unwrap().as_ref(),
             "fn a() {}\n\nfn b() {}\n"
         );
+        assert!(snapshots.validate_current().await.is_err());
+        assert_eq!(snapshots.read_operations, 1);
+        assert_eq!(snapshots.read_bytes, snapshot.size);
         assert_eq!(snapshot.lines, 3);
         assert_eq!(snapshots.retained_bytes, 0);
         assert_eq!(snapshots.spilled_bytes, snapshot.size);
