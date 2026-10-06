@@ -786,7 +786,7 @@ impl ProjectIndexer {
             let make_fingerprint =
                 |external_support: &std::collections::BTreeMap<String, String>| {
                     fingerprint(&(
-                        "project-input-v6",
+                        "project-input-v7",
                         &self.project_id,
                         source_snapshots
                             .iter()
@@ -1414,7 +1414,7 @@ impl ProjectIndexer {
                                 .and_then(|snapshot| snapshot.contents().ok())
                         })
                 };
-                let plan = self.cpu_pool.install(chunker);
+                let plan = self.cpu_pool.install(chunker)?;
                 let elapsed = start.elapsed();
                 self.finish_bar(
                     chunk_pb,
@@ -3801,6 +3801,25 @@ mod tests {
         assert!(!edges.iter().any(|e| e.edge_type == EdgeType::Uses));
         assert!(!edges.iter().any(|e| e.edge_type == EdgeType::References));
     }
+
+    #[test]
+    fn metadata_text_formatter_never_truncates_unicode_or_long_source() {
+        let content = "let café = \"🚀\";\n".repeat(1000);
+        let node = CodeNode::new(
+            "fixture",
+            Some(NodeType::Function),
+            Some(codegraph_core::Language::Rust),
+            codegraph_core::Location {
+                file_path: "fixture.rs".into(),
+                line: 1,
+                column: 0,
+                end_line: None,
+                end_column: None,
+            },
+        )
+        .with_content(content.clone());
+        assert!(prepare_node_text(&node).ends_with(&content));
+    }
 }
 
 pub fn prepare_node_text(node: &CodeNode) -> String {
@@ -3820,56 +3839,6 @@ pub fn prepare_node_text(node: &CodeNode) -> String {
         text.push_str(c);
     }
 
-    // Semantic chunking with environment variable support
-    let max_chunk_tokens = std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(512); // Default 512 tokens
-
-    // Approximate character limit for quick check (1 token ≈ 4 chars)
-    let approx_max_chars = max_chunk_tokens * 4;
-
-    if text.len() > approx_max_chars {
-        // Load Qwen2.5-Coder tokenizer for accurate token counting
-        let tokenizer_path = std::path::PathBuf::from(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../codegraph-vector/tokenizers/qwen2.5-coder.json"
-        ));
-
-        match tokenizers::Tokenizer::from_file(&tokenizer_path) {
-            Ok(tokenizer) => {
-                // Proper token-based chunking with Qwen2.5-Coder tokenizer
-                let tok = std::sync::Arc::new(tokenizer);
-                let token_counter = move |s: &str| -> usize {
-                    tok.encode(s, false)
-                        .map(|enc| enc.len())
-                        .unwrap_or_else(|_| (s.len() + 3) / 4)
-                };
-
-                let chunker = semchunk_rs::Chunker::new(max_chunk_tokens, Box::new(token_counter));
-                let chunks = chunker.chunk(&text);
-
-                if let Some(first_chunk) = chunks.first() {
-                    text = first_chunk.clone();
-                } else {
-                    // Fallback to character truncation
-                    let mut new_len = approx_max_chars.min(text.len());
-                    while new_len > 0 && !text.is_char_boundary(new_len) {
-                        new_len -= 1;
-                    }
-                    text.truncate(new_len);
-                }
-            }
-            _ => {
-                // Tokenizer not available - fallback to character truncation
-                let mut new_len = approx_max_chars.min(text.len());
-                while new_len > 0 && !text.is_char_boundary(new_len) {
-                    new_len -= 1;
-                }
-                text.truncate(new_len);
-            }
-        }
-    }
     text
 }
 

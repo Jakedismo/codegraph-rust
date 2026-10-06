@@ -214,7 +214,7 @@ impl LocalEmbeddingProvider {
             .smart_split(smart_split)
     }
 
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
         build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
@@ -627,7 +627,7 @@ impl EmbeddingProvider for LocalEmbeddingProvider {
         }
 
         let start_time = Instant::now();
-        let plan = self.build_plan_for_nodes(nodes);
+        let plan = self.build_plan_for_nodes(nodes)?;
         debug!(
             "Local chunk planner: {} nodes -> {} chunks (avg {:.2} chunks/node)",
             plan.stats.total_nodes,

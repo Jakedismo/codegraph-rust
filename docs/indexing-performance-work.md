@@ -112,7 +112,8 @@ limit. Tokenizer padding/truncation are disabled during counting.
 
 Complete input counts include HF postprocessing, additional GGUF BOS/EOS tokens and
 retrieval prefixes. Nomic text models use `search_document: ` and `search_query: `;
-Qwen3 queries use an instruction while documents remain unprefixed. Custom models
+Qwen3 and Nomic Code queries use their retrieval instructions while code documents
+remain unprefixed. Custom models
 can set `CODEGRAPH_EMBEDDING_DOCUMENT_PREFIX` and `CODEGRAPH_EMBEDDING_QUERY_PREFIX`.
 The resolved context, tokenizer contents/revision, model metadata/digest and task
 prefixes participate in cache/reconciliation identity. Reindex after upgrading to
@@ -133,7 +134,8 @@ at a run boundary. Entries larger than 64 MiB are recomputed rather than cached.
    cache and low-precision accumulation and Candle dtype experiments are opt-in.
 
 Inference controls: `CODEGRAPH_PROVIDER_CONCURRENCY` (local 1, remote 4),
-`CODEGRAPH_EMBEDDING_BATCH_TOKENS` (local 8192, remote 32768),
+`CODEGRAPH_EMBEDDING_BATCH_TOKENS` (default at least the resolved input context;
+local floor 8192, remote floor 32768),
 `CODEGRAPH_EMBEDDING_BATCH_BYTES` (1 MiB), `CODEGRAPH_EMBEDDING_CACHE_TTL_SECONDS`
 (3600 for mutable model aliases). `CODEGRAPH_MODEL_REVISION` declares an immutable
 revision and disables TTL expiration. `CODEGRAPH_TOKENIZER_PATH` selects the provider's
@@ -173,6 +175,31 @@ sizes for CLI overrides (100/512), conflicting dotenv aliases and TOML fallback.
 `CODEGRAPH_PARSER_TIMEOUT_SECS` sets the small-file timeout (default 10 seconds),
 scaled by three/six for medium/large files. AST extraction after parsing remains
 bounded by worker permits even if its timeout expires.
+
+Chunk plans now keep each fitting AST unit intact. Oversized units use Tree-sitter
+statement/declaration/block boundaries from `codegraph-parser::chunk_boundaries`;
+adjacent pieces are merged while the complete provider input fits. Unsupported syntax
+and oversized leaves fall back to lossless line/UTF-8 cuts. The optional text-splitter
+path also preserves whitespace and rechecks token budgets. All planners clear
+padding/truncation before counting, include special tokens, and return errors for an
+indivisible character or prefix exceeding the budget.
+
+`CODEGRAPH_CHUNK_MAX_TOKENS` lowers the complete-input target; it cannot exceed the
+serving context. Legacy `CODEGRAPH_MAX_CHUNK_TOKENS` is accepted at lower precedence.
+`CODEGRAPH_CHUNK_SMART_SPLIT=0` selects token splitting without AST boundaries.
+`CODEGRAPH_CHUNK_OVERLAP_TOKENS` (64, zero disables) uses a token-counted UTF-8 suffix
+from the previous base chunk, shrunk to fit the complete next input. It no longer
+estimates four characters per token or recursively overlaps already-overlapped text.
+`CODEGRAPH_EMBEDDING_SKIP_CHUNKING=1` keeps nodes intact and fails before inference
+when a node exceeds the configured limit; it never disables budget validation.
+
+Chunk/reconciliation format versions invalidate old splitting artifacts. Prepared
+provider and chunk-planning APIs propagate errors rather than silently returning
+partial text. The unused metadata formatter also retains the complete source. The
+semchunk dependency was removed, including its legacy LM Studio path; LM Studio,
+Jina, OpenAI and local node preparation use the shared fallible planner. Regressions
+cover fitting/oversized Rust and Python, braces inside strings, source recovery,
+Unicode overlap, truncating tokenizers, impossible budgets and warm-cache skip errors.
 
 8. Provider-aware token counting (OpenAI BPE or loaded local tokenizer), final input
    budget enforcement even when semantic splitting is disabled, file-grouped source

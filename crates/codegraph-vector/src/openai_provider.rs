@@ -147,7 +147,7 @@ impl OpenAiEmbeddingProvider {
             .smart_split(smart_split)
     }
 
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
         build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
     }
 
@@ -250,7 +250,7 @@ impl OpenAiEmbeddingProvider {
         config: &BatchConfig,
     ) -> Result<(Vec<Vec<f32>>, EmbeddingMetrics)> {
         let start_time = Instant::now();
-        let plan = self.build_plan_for_nodes(nodes);
+        let plan = self.build_plan_for_nodes(nodes)?;
         debug!(
             "OpenAI chunk planner: {} nodes -> {} chunks (avg {:.2} chunks/node)",
             plan.stats.total_nodes,

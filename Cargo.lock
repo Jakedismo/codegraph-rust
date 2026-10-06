@@ -452,12 +452,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bisection"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "021e079a1bab0ecce6cf4b4b74c0c37afa4a697136eb3b127875c84a8f04a8c3"
-
-[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1108,7 +1102,6 @@ dependencies = [
  "rustc-demangle",
  "schemars",
  "scip",
- "semchunk-rs",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1323,6 +1316,7 @@ dependencies = [
  "chrono",
  "codegraph-core",
  "codegraph-graph",
+ "codegraph-parser",
  "criterion",
  "crossbeam-channel",
  "dashmap",
@@ -1340,7 +1334,6 @@ dependencies = [
  "parking_lot",
  "rayon",
  "reqwest 0.13.5",
- "semchunk-rs",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -6870,16 +6863,6 @@ checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "semchunk-rs"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffc31a170a39b61d087c4ea71de9d8c98546992b2929132c8fbc57ed5d6dfb3b"
-dependencies = [
- "bisection",
- "regex",
 ]
 
 [[package]]

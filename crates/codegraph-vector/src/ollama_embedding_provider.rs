@@ -149,6 +149,7 @@ impl OllamaEmbeddingProvider {
     }
 
     async fn resolve_input_policy(&self) -> Result<InputPolicy> {
+        env_positive("CODEGRAPH_OLLAMA_NUM_CTX")?;
         let base = self.config.base_url.trim_end_matches('/');
         let profile = known_model(&self.config.model_name);
         let response = self
@@ -381,12 +382,17 @@ impl OllamaEmbeddingProvider {
                     .and_then(|value| value.parse().ok())
                     .unwrap_or(64),
             );
+        config.skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
+            .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
+        config.smart_split = std::env::var("CODEGRAPH_CHUNK_SMART_SPLIT").map_or(true, |value| {
+            value == "1" || value.eq_ignore_ascii_case("true")
+        });
         let tokenizer = policy.tokenizer.clone();
         config.token_counter = Some((
             policy.identity.clone(),
             Arc::new(move |text| policy.document_tokens(text)),
         ));
-        Ok(build_chunk_plan(nodes, tokenizer, config))
+        build_chunk_plan(nodes, tokenizer, config)
     }
 
     async fn call_embed_endpoint(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
@@ -617,6 +623,105 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn document_query_prefixes_and_overflow_errors_reach_strict_requests() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut bodies = Vec::new();
+            for request in 0..3 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                let body_start;
+                loop {
+                    let mut buffer = [0; 4096];
+                    let count = stream.read(&mut buffer).await.unwrap();
+                    assert!(count > 0);
+                    bytes.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                        let header = String::from_utf8_lossy(&bytes[..end]).to_ascii_lowercase();
+                        let length: usize = header
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length: "))
+                            .unwrap()
+                            .parse()
+                            .unwrap();
+                        if bytes.len() >= end + 4 + length {
+                            body_start = end + 4;
+                            break;
+                        }
+                    }
+                }
+                bodies.push(
+                    serde_json::from_slice::<serde_json::Value>(&bytes[body_start..]).unwrap(),
+                );
+                let (status, body) = if request == 2 {
+                    (
+                        "400 Bad Request",
+                        "{\"error\":\"input length exceeds the context length\"}",
+                    )
+                } else {
+                    ("200 OK", "{\"embeddings\":[[1.0,2.0]]}")
+                };
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+            bodies
+        });
+        let provider = OllamaEmbeddingProvider::new(OllamaEmbeddingConfig {
+            base_url: format!("http://{address}"),
+            ..Default::default()
+        });
+        let tokenizer = Tokenizer::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tokenizers/qwen2.5-coder.json"
+        ))
+        .unwrap();
+        provider
+            .input_policy
+            .set(
+                InputPolicy::new(
+                    tokenizer,
+                    512,
+                    "search_document: ".into(),
+                    "search_query: ".into(),
+                    2,
+                    "fixture",
+                )
+                .unwrap(),
+            )
+            .unwrap_or_else(|_| panic!("policy initialized twice"));
+        assert_eq!(
+            provider
+                .generate_embeddings_for_texts(&["code".into()], 64)
+                .await
+                .unwrap(),
+            vec![vec![1.0, 2.0]]
+        );
+        assert_eq!(
+            provider.generate_single_embedding("query").await.unwrap(),
+            vec![1.0, 2.0]
+        );
+        let error = provider
+            .generate_single_embedding("server-limit")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("Input was not truncated"));
+        let bodies = tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bodies[0]["input"][0], "search_document: code");
+        assert_eq!(bodies[1]["input"][0], "search_query: query");
+        for body in bodies {
+            assert_eq!(body["truncate"], false);
+            assert_eq!(body["options"]["num_ctx"], 512);
+        }
+    }
     #[test]
     fn availability_requires_the_selected_model_and_tag() {
         assert!(model_names_match(

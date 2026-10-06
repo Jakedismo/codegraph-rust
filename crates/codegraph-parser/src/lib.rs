@@ -1,3 +1,4 @@
+pub mod chunk_boundaries;
 pub mod complexity;
 #[cfg(feature = "experimental")]
 pub mod diff;

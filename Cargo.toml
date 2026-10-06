@@ -97,7 +97,6 @@ tokio = { version = "1.53.2", features = ["full"] }
 async-trait = "0.1.92"
 futures = "0.3.34"
 rmcp = { version = "3.5.1", features = ["server", "transport-io", "transport-streamable-http-server"] }
-semchunk-rs = { version = "0.1.1" }
 tokenizers = { version = "0.23.2", default-features = false, features = ["http", "fancy-regex", "onig"] }
 
 # Serialization

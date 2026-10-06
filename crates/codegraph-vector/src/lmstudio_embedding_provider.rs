@@ -158,29 +158,31 @@ impl LmStudioEmbeddingProvider {
         }
     }
 
-    /// Prepare text by chunking if necessary
-    fn prepare_text(&self, text: &str) -> Vec<String> {
-        let encoding = self.tokenizer.encode(text, false).ok();
-        let token_count = encoding.as_ref().map(|e| e.len()).unwrap_or(0);
-
-        if token_count <= self.config.max_tokens_per_request {
-            // Fast path: text fits in single chunk
-            vec![text.to_string()]
-        } else {
-            // Semantic chunking for large text
-            use semchunk_rs::Chunker;
-            let tokenizer = self.tokenizer.clone();
-            let chunker = Chunker::new(
-                self.config.max_tokens_per_request,
-                Box::new(move |s: &str| {
-                    tokenizer
-                        .encode(s, false)
-                        .map(|enc| enc.len())
-                        .unwrap_or_else(|_| (s.len() + 3) / 4) // Fallback to char approximation
-                }),
-            );
-            chunker.chunk(text)
-        }
+    /// Plan lossless chunks through the shared UTF-8-safe syntax/token pipeline.
+    fn prepare_text(
+        &self,
+        text: &str,
+        language: Option<codegraph_core::Language>,
+    ) -> Result<Vec<String>> {
+        let node = CodeNode::new(
+            "input",
+            None,
+            language,
+            codegraph_core::Location {
+                file_path: String::new(),
+                line: 1,
+                column: 0,
+                end_line: None,
+                end_column: None,
+            },
+        )
+        .with_content(text.to_owned());
+        let plan = crate::prep::chunker::build_chunk_plan(
+            &[node],
+            std::sync::Arc::new(self.tokenizer.clone()),
+            crate::prep::chunker::ChunkerConfig::new(self.config.max_tokens_per_request),
+        )?;
+        Ok(plan.chunks.into_iter().map(|chunk| chunk.text).collect())
     }
 
     /// Call LM Studio embeddings endpoint
@@ -251,7 +253,7 @@ impl LmStudioEmbeddingProvider {
 
     /// Generate embedding for a single text string (convenience method)
     pub async fn generate_single_embedding(&self, text: &str) -> Result<Vec<f32>> {
-        let chunks = self.prepare_text(text);
+        let chunks = self.prepare_text(text, None)?;
 
         if chunks.len() == 1 {
             // Single chunk - direct embedding
@@ -367,7 +369,7 @@ impl EmbeddingProvider for LmStudioEmbeddingProvider {
             CodeGraphError::Validation("CodeNode missing content for embedding".to_string())
         })?;
 
-        let chunks = self.prepare_text(content);
+        let chunks = self.prepare_text(content, node.language.clone())?;
 
         if chunks.len() == 1 {
             // Single chunk - direct embedding
@@ -494,6 +496,29 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(LmStudioEmbeddingConfig::from(&config).batch_size, 4096);
+    }
+
+    #[test]
+    fn long_unicode_inputs_use_lossless_shared_chunk_planning() {
+        let provider = LmStudioEmbeddingProvider::new(LmStudioEmbeddingConfig {
+            max_tokens_per_request: 32,
+            ..Default::default()
+        })
+        .unwrap();
+        let source = "fn café() {\n let message = \"🚀 計算\";\n}\n".repeat(20);
+        let chunks = provider
+            .prepare_text(&source, Some(codegraph_core::Language::Rust))
+            .unwrap();
+        assert!(chunks.len() > 1);
+        assert!(chunks.iter().all(|chunk| {
+            provider
+                .tokenizer
+                .encode(chunk.as_str(), true)
+                .unwrap()
+                .len()
+                <= 32
+        }));
+        assert!(chunks.concat().contains("🚀 計算"));
     }
 
     #[test]

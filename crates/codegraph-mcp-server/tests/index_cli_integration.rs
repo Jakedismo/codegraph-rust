@@ -279,7 +279,7 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
             "/api/tags",
             get(|| async {
                 Json(serde_json::json!({"models": [
-                    {"name": "qwen3-embedding:0.6b"}, {"name": "nomic-embed-text-v2-moe:latest"}
+                    {"name": "qwen3-embedding:0.6b"}, {"name": "nomic-embed-text-v2-moe:latest"}, {"name": "custom-embedding"}
                 ]}))
             }),
         )
@@ -288,7 +288,7 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
             post(|Json(body): Json<Value>| async move {
                 let qwen = body["model"].as_str().unwrap().contains("qwen");
                 Json(
-                    serde_json::json!({"capabilities": ["embedding"], "model_info": {
+                    serde_json::json!({"capabilities": ["embedding"], "parameters": "num_ctx 4096", "model_info": {
                         "mock.context_length": if qwen {32768} else {512},
                         "tokenizer.ggml.add_bos_token": false, "tokenizer.ggml.add_eos_token": true
                     }}),
@@ -297,7 +297,7 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
         )
         .route(
             "/api/ps",
-            get(|| async { Json(serde_json::json!({"models": []})) }),
+            get(|| async { Json(serde_json::json!({"models": [{"name": "qwen3-embedding:0.6b", "context_length": 2048}]})) }),
         )
         .route(
             "/api/embed",
@@ -317,10 +317,13 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    for (model, dimension, serving) in [
-        ("qwen3-embedding:0.6b", 1024, 32768),
-        ("nomic-embed-text-v2-moe:latest", 768, 512),
-        ("qwen3-embedding:0.6b", 1024, 256),
+    for (model, dimension, serving, skip) in [
+        ("qwen3-embedding:0.6b", 1024, 32768, false),
+        ("nomic-embed-text-v2-moe:latest", 768, 512, false),
+        ("qwen3-embedding:0.6b", 1024, 256, false),
+        ("qwen3-embedding:0.6b", 1024, 256, true),
+        ("qwen3-embedding:0.6b", 1024, 2048, false),
+        ("custom-embedding", 384, 512, false),
     ] {
         requests.lock().unwrap().clear();
         let url = url.clone();
@@ -332,10 +335,14 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
             std::fs::write(root.join(".env"), "").unwrap();
             std::fs::create_dir(root.join("src")).unwrap();
             let mut source = String::from("pub fn substantial_unit() {\n");
-            for index in 0..180 { source.push_str(&format!("    let value_{index} = \"café 🚀\";\n")); }
+            let statements = if serving == 32768 { 900 } else { 180 };
+            for index in 0..statements {
+                source.push_str(&format!("    let value_{index} = \"café 🚀\";\n"));
+            }
             source.push_str("}\n");
             std::fs::write(root.join("src/lib.rs"), source).unwrap();
-            offline_index_command(root, &config)
+            let mut command = offline_index_command(root, &config);
+            command
                 .args(["index", "--languages", "Rust", "--index-tier", "fast", "."])
                 .env("CODEGRAPH_ANALYZERS", "0")
                 .env("CODEGRAPH_EMBEDDING_POLICY", "sync")
@@ -343,19 +350,39 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
                 .env("CODEGRAPH_EMBEDDING_MODEL", model)
                 .env("CODEGRAPH_EMBEDDING_DIMENSION", dimension.to_string())
                 .env("CODEGRAPH_OLLAMA_URL", url)
-                .env("CODEGRAPH_OLLAMA_NUM_CTX", serving.to_string())
                 .env("CODEGRAPH_TOKENIZER_PATH", concat!(env!("CARGO_MANIFEST_DIR"), "/../codegraph-vector/tokenizers/qwen2.5-coder.json"))
+                .env("CODEGRAPH_EMBEDDING_SKIP_CHUNKING", if skip {"1"} else {"0"})
                 .env("CODEGRAPH_CHUNK_OVERLAP_TOKENS", "0")
-                .env("CODEGRAPH_CHUNK_SMART_SPLIT", "0")
+                .env_remove("CODEGRAPH_CHUNK_SMART_SPLIT")
                 .env_remove("CODEGRAPH_CHUNK_MAX_TOKENS")
-                .env_remove("CODEGRAPH_MAX_CHUNK_TOKENS")
-                .output().unwrap()
+                .env_remove("CODEGRAPH_MAX_CHUNK_TOKENS");
+            if serving == 2048 || model == "nomic-embed-text-v2-moe:latest" {
+                command.env_remove("CODEGRAPH_OLLAMA_NUM_CTX");
+            } else {
+                command.env("CODEGRAPH_OLLAMA_NUM_CTX", serving.to_string());
+            }
+            if model == "custom-embedding" {
+                command.env_remove("CODEGRAPH_TOKENIZER_PATH").env_remove("CODEGRAPH_TOKENIZER_REPO");
+            }
+            command.output().unwrap()
         }).await.unwrap();
         let logs = format!(
             "{}\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
+        if skip || model == "custom-embedding" {
+            assert!(!output.status.success(), "{logs}");
+            let message = if skip {
+                "Chunking is disabled"
+            } else {
+                "Unknown Ollama embedding tokenizer"
+            };
+            assert!(logs.contains(message), "{logs}");
+            assert!(!logs.contains("🎉 INDEXING COMPLETE"), "{logs}");
+            assert!(requests.lock().unwrap().is_empty());
+            continue;
+        }
         assert!(output.status.success(), "{logs}");
         let bodies = requests.lock().unwrap().clone();
         assert!(!bodies.is_empty());
@@ -388,7 +415,7 @@ async fn model_contexts_prefixes_and_strict_truncation_reach_actual_requests() {
             assert!(
                 inputs
                     .iter()
-                    .any(|input| tokenizer.encode(*input, false).unwrap().len() > 512)
+                    .any(|input| tokenizer.encode(*input, false).unwrap().len() > 8192)
             );
         }
         assert!(

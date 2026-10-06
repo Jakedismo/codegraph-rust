@@ -45,6 +45,7 @@ impl SubmittedCache {
         root: Option<std::path::PathBuf>,
         local: bool,
         rows: usize,
+        input_tokens: usize,
     ) -> Self {
         let setting = |name, default| {
             std::env::var(name)
@@ -71,7 +72,7 @@ impl SubmittedCache {
             rows: rows.max(1),
             tokens: setting(
                 "CODEGRAPH_EMBEDDING_BATCH_TOKENS",
-                if local { 8192 } else { 32768 },
+                (if local { 8192 } else { 32768 }).max(input_tokens),
             ),
             bytes: setting("CODEGRAPH_EMBEDDING_BATCH_BYTES", 1024 * 1024),
             ttl: if std::env::var_os("CODEGRAPH_MODEL_REVISION").is_some() {
@@ -193,9 +194,13 @@ impl SubmittedCache {
         let mut bytes = 0;
         for item in misses {
             if item.2 > self.tokens || item.1.len() > self.bytes {
-                return Err(CodeGraphError::Vector(
-                    "One text exceeds inference batch token/byte budget".into(),
-                ));
+                return Err(CodeGraphError::Vector(format!(
+                    "One text ({} tokens, {} bytes) exceeds inference batch limits ({} tokens, {} bytes). Increase CODEGRAPH_EMBEDDING_BATCH_TOKENS/CODEGRAPH_EMBEDDING_BATCH_BYTES or lower CODEGRAPH_CHUNK_MAX_TOKENS.",
+                    item.2,
+                    item.1.len(),
+                    self.tokens,
+                    self.bytes
+                )));
             }
             if !batch.is_empty()
                 && (batch.len() >= self.rows
@@ -291,6 +296,7 @@ mod tests {
             Some(root.path().into()),
             true,
             8,
+            512,
         );
         let texts = vec!["same".to_owned(), "same".to_owned()];
         let generate = |batch: Vec<String>| {
@@ -309,6 +315,7 @@ mod tests {
             Some(root.path().into()),
             true,
             8,
+            512,
         );
         assert_eq!(
             warm.embed(&texts, str::len, |_| Box::pin(async {
@@ -325,13 +332,14 @@ mod tests {
             Some(root.path().into()),
             true,
             8,
+            512,
         );
         changed.embed(&texts, str::len, generate).await.unwrap();
         assert_eq!(changed.inferred.load(Ordering::Relaxed), 1);
     }
     #[tokio::test]
     async fn invalid_provider_outputs_never_enter_cache() {
-        let cache = SubmittedCache::new("test".into(), 2, None, true, 8);
+        let cache = SubmittedCache::new("test".into(), 2, None, true, 8, 512);
         assert!(
             cache
                 .embed(&["text".into()], str::len, |_| Box::pin(async {

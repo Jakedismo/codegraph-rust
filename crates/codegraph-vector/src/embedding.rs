@@ -65,6 +65,14 @@ impl EmbeddingGenerator {
         ] {
             crate::input_policy::env_positive(key)?;
         }
+        let chunking = self.base_chunker_config()?;
+        tracing::info!(
+            "Chunk input limit: {} tokens including prefixes/special tokens | skip_chunking={} | AST splitting={} | overlap={} tokens",
+            chunking.max_tokens_per_text,
+            chunking.skip_chunking,
+            chunking.smart_split,
+            chunking.overlap_tokens
+        );
         Ok(())
     }
 
@@ -117,6 +125,22 @@ impl EmbeddingGenerator {
         &mut self,
         engine: Arc<crate::embeddings::generator::AdvancedEmbeddingGenerator>,
     ) {
+        // Replacing the active backend invalidates its tokenizer/task policy and caches.
+        self.input_policy = None;
+        self.submitted_cache = None;
+        self.chunk_cache_dir = None;
+        #[cfg(feature = "ollama")]
+        {
+            self.ollama_provider = None;
+        }
+        #[cfg(feature = "jina")]
+        {
+            self.jina_provider = None;
+        }
+        #[cfg(feature = "lmstudio")]
+        {
+            self.lmstudio_provider = None;
+        }
         self.model_config.dimension = engine.dimension();
         if let Some(model) = engine.model_name() {
             self.model_config.model_name = model.to_owned();
@@ -124,7 +148,7 @@ impl EmbeddingGenerator {
         if let Some(tokenizer) = engine.tokenizer() {
             self.tokenizer = tokenizer;
         }
-        self.model_config.max_tokens = engine.max_input_tokens().saturating_sub(2).max(1);
+        self.model_config.max_tokens = engine.max_input_tokens().max(1);
         self.advanced = Some(engine);
     }
 
@@ -142,40 +166,44 @@ impl EmbeddingGenerator {
         }
     }
 
-    fn chunker_config(&self) -> ChunkerConfig {
-        let mut config = self.base_chunker_config();
+    fn chunker_config(&self) -> Result<ChunkerConfig> {
+        let mut config = self.base_chunker_config()?;
         if let Some(policy) = &self.input_policy {
             let policy = policy.clone();
             config.token_counter = Some((
                 policy.identity.clone(),
                 Arc::new(move |text| policy.document_tokens(text)),
             ));
-            return config;
+            return Ok(config);
         }
         #[cfg(feature = "openai")]
         if self.model_config.model_name.starts_with("text-embedding-")
             && let Ok(bpe) = tiktoken_rs::bpe_for_model(&self.model_config.model_name)
         {
             let mut config = config;
+            let overlap_bpe = bpe.clone();
+            config.overlap_counter = Some((
+                format!("tiktoken-0.12:{}", self.model_config.model_name),
+                Arc::new(move |text| overlap_bpe.encode_ordinary(text).len()),
+            ));
             config.token_counter = Some((
                 format!("tiktoken-0.12:{}", self.model_config.model_name),
                 Arc::new(move |text| bpe.encode_ordinary(text).len()),
             ));
-            return config;
+            return Ok(config);
         }
-        config
+        Ok(config)
     }
 
-    fn base_chunker_config(&self) -> ChunkerConfig {
-        // Allow skipping chunking for speed with env flag
+    fn base_chunker_config(&self) -> Result<ChunkerConfig> {
+        // An explicit skip keeps units whole while retaining complete-input validation.
         let skip_chunking = std::env::var("CODEGRAPH_EMBEDDING_SKIP_CHUNKING")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
-        let max_tokens_env = std::env::var("CODEGRAPH_CHUNK_MAX_TOKENS")
-            .or_else(|_| std::env::var("CODEGRAPH_MAX_CHUNK_TOKENS"))
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok());
+        let max_tokens_env = crate::input_policy::env_positive("CODEGRAPH_CHUNK_MAX_TOKENS")?.or(
+            crate::input_policy::env_positive("CODEGRAPH_MAX_CHUNK_TOKENS")?,
+        );
         let max_tokens = max_tokens_env
             .unwrap_or(self.model_config.max_tokens)
             .clamp(1, self.model_config.max_tokens.max(1));
@@ -188,27 +216,28 @@ impl EmbeddingGenerator {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
-        if skip_chunking {
+        Ok(if skip_chunking {
             ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
                 .overlap_tokens(0)
                 .smart_split(false)
+                .skip_chunking(true)
         } else {
             ChunkerConfig::new(max_tokens)
                 .sanitize_mode(SanitizeMode::AsciiFastPath)
                 .cache_capacity(2048)
                 .overlap_tokens(overlap_tokens)
                 .smart_split(smart_split)
-        }
+        })
     }
 
-    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
-        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config())
+    fn build_plan_for_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
+        build_chunk_plan(nodes, Arc::clone(&self.tokenizer), self.chunker_config()?)
     }
 
     /// Expose chunking so callers can persist chunk-level embeddings.
-    pub fn chunk_nodes(&self, nodes: &[CodeNode]) -> ChunkPlan {
+    pub fn chunk_nodes(&self, nodes: &[CodeNode]) -> Result<ChunkPlan> {
         self.build_plan_for_nodes(nodes)
     }
 
@@ -216,12 +245,12 @@ impl EmbeddingGenerator {
         &self,
         nodes: &[CodeNode],
         file_sources: &std::collections::HashMap<String, String>,
-    ) -> ChunkPlan {
+    ) -> Result<ChunkPlan> {
         build_chunk_plan_with_sources(
             nodes,
             file_sources,
             Arc::clone(&self.tokenizer),
-            self.chunker_config()
+            self.chunker_config()?
                 .cache_dir(self.chunk_cache_dir.clone()),
         )
     }
@@ -230,12 +259,12 @@ impl EmbeddingGenerator {
         &self,
         nodes: &[CodeNode],
         source_lookup: impl Fn(&str) -> Option<Arc<str>> + Sync,
-    ) -> ChunkPlan {
+    ) -> Result<ChunkPlan> {
         crate::prep::chunker::build_chunk_plan_with_source_lookup(
             nodes,
             source_lookup,
             self.tokenizer.clone(),
-            self.chunker_config()
+            self.chunker_config()?
                 .cache_dir(self.chunk_cache_dir.clone()),
         )
     }
@@ -733,7 +762,7 @@ impl EmbeddingGenerator {
 
         #[cfg(any(feature = "local-embeddings", feature = "openai", feature = "onnx"))]
         if let Some(engine) = &self.advanced {
-            let plan = self.build_plan_for_nodes(nodes);
+            let plan = self.build_plan_for_nodes(nodes)?;
             tracing::debug!(
                 target: "codegraph_vector::embeddings",
                 "Advanced engine chunk plan: {} nodes -> {} chunks",
@@ -766,7 +795,7 @@ impl EmbeddingGenerator {
         }
 
         // Fallback: sequential deterministic embeddings with chunking
-        let plan = self.build_plan_for_nodes(nodes);
+        let plan = self.build_plan_for_nodes(nodes)?;
         let chunk_to_node = plan.chunk_to_node();
         let mut chunk_embeddings = Vec::with_capacity(plan.chunks.len());
         for chunk in plan.chunks {
@@ -826,6 +855,7 @@ impl EmbeddingGenerator {
             Some(root.clone()),
             matches!(provider, "local" | "onnx" | "ollama" | "lmstudio"),
             rows,
+            self.model_config.max_tokens,
         ));
         self.chunk_cache_dir = Some(root);
         Ok(())

@@ -9,6 +9,7 @@ description = "Vector storage and similarity search using FAISS for CodeGraph"
 
 [dependencies]
 codegraph-core = { workspace = true }
+codegraph-parser = { workspace = true }
 codegraph-graph = { path = "../codegraph-graph", features = ["surrealdb"] }
 ndarray = { workspace = true, optional = true }
 serde = { workspace = true }
@@ -47,7 +48,6 @@ reqwest = { workspace = true, optional = true }
 
 # ONNX Runtime provider (optional)
 ort = { version = "2.0.0-rc.13", optional = true, default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native", "copy-dylibs", "api-27"] }
-semchunk-rs = { workspace = true }
 fxhash = "0.2.1"
 
 

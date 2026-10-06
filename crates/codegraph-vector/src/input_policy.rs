@@ -81,6 +81,9 @@ impl InputPolicy {
     }
 
     pub fn document_tokens(&self, text: &str) -> usize {
+        if self.document_prefix.is_empty() {
+            return self.tokens(text).unwrap_or(usize::MAX);
+        }
         self.tokens(&format!("{}{text}", self.document_prefix))
             .unwrap_or(usize::MAX)
     }
@@ -140,9 +143,19 @@ pub fn known_model(model: &str) -> Option<(&'static str, usize, &'static str, &'
             "search_query: ",
         ))
     } else if model.contains("nomic-embed-code") {
-        Some(("nomic-ai/nomic-embed-code", 8192, "", ""))
+        Some((
+            "nomic-ai/nomic-embed-code",
+            32768,
+            "",
+            "Represent this query for searching relevant code: ",
+        ))
     } else if model.contains("all-minilm") {
-        Some(("sentence-transformers/all-MiniLM-L6-v2", 256, "", ""))
+        let repository = if model.contains("33m") {
+            "sentence-transformers/all-MiniLM-L12-v2"
+        } else {
+            "sentence-transformers/all-MiniLM-L6-v2"
+        };
+        Some((repository, 512, "", ""))
     } else {
         None
     }
