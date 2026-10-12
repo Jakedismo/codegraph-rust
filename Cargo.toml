@@ -92,7 +92,7 @@ tokenizers = { version = "0.23.2", default-features = false, features = ["http",
 # Serialization
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-toml = "0.9.8"
+toml = "1.1.6"
 
 # Zero-copy serialization
 rkyv = { version = "0.8.18", features = ["alloc", "std"] }
